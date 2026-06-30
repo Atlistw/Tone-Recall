@@ -5,8 +5,15 @@ const state = {
   tones: [],
   activeId: null,
   activePedalId: null,
-  mediaRecorder: null,
+  audioStream: null,
+  audioContext: null,
+  audioProcessor: null,
+  audioSource: null,
   audioChunks: [],
+  audioLength: 0,
+  audioSampleRate: 44100,
+  audioPeak: 0,
+  isRecording: false,
   zoom: 1,
   panX: 0,
   panY: 0,
@@ -103,6 +110,7 @@ function newTone() {
     audio: null,
     audioType: "",
     audioSize: 0,
+    audioPeak: 0,
     pedals: [],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
@@ -230,6 +238,7 @@ function normalizeImportedTone(item) {
     audio: typeof item.audio === "string" ? item.audio : null,
     audioType: typeof item.audioType === "string" ? item.audioType : "",
     audioSize: Number.isFinite(item.audioSize) ? item.audioSize : 0,
+    audioPeak: Number.isFinite(item.audioPeak) ? item.audioPeak : 0,
     pedals: Array.isArray(item.pedals) ? item.pedals : [],
     createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
     updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now
@@ -355,7 +364,7 @@ function renderDetail() {
 }
 
 function renderAudioCapability() {
-  const canRecord = Boolean(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  const canRecord = Boolean(navigator.mediaDevices?.getUserMedia && (window.AudioContext || window.webkitAudioContext));
   els.recordButton.disabled = !canRecord;
   const tone = activeTone();
   const currentAudio = tone?.audio
@@ -538,58 +547,143 @@ async function pastePhoto() {
 }
 
 async function toggleRecording() {
+  if (state.isRecording) {
+    await stopWavRecording();
+    return;
+  }
+  await startWavRecording();
+}
+
+async function startWavRecording() {
   const tone = activeTone();
   if (!tone) return;
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+  if (!navigator.mediaDevices?.getUserMedia || !(window.AudioContext || window.webkitAudioContext)) {
     renderAudioCapability();
     return;
   }
 
-  if (state.mediaRecorder?.state === "recording") {
-    state.mediaRecorder.stop();
-    els.recordButton.textContent = "Record";
-    return;
-  }
-
-  let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
   } catch (error) {
     els.audioStatus.textContent = "Microphone access was blocked. Attach an audio file instead.";
     return;
   }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  state.audioContext = new AudioContextClass();
+  await state.audioContext.resume();
+  state.audioSampleRate = state.audioContext.sampleRate;
   state.audioChunks = [];
-  const mimeType = preferredAudioMimeType();
-  state.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-  state.mediaRecorder.ondataavailable = (event) => state.audioChunks.push(event.data);
-  state.mediaRecorder.onstop = async () => {
-    stream.getTracks().forEach((track) => track.stop());
-    const blob = new Blob(state.audioChunks, { type: state.mediaRecorder.mimeType || "audio/webm" });
-    if (!blob.size) {
-      els.audioStatus.textContent = "Recording stopped, but no audio data was captured. Try Add Audio File or test from localhost/HTTPS.";
-      renderDetail();
-      return;
+  state.audioLength = 0;
+  state.audioPeak = 0;
+  state.audioSource = state.audioContext.createMediaStreamSource(state.audioStream);
+  state.audioProcessor = state.audioContext.createScriptProcessor(4096, 1, 1);
+
+  state.audioProcessor.onaudioprocess = (event) => {
+    if (!state.isRecording) return;
+    const input = event.inputBuffer.getChannelData(0);
+    event.outputBuffer.getChannelData(0).fill(0);
+    const copy = new Float32Array(input.length);
+    let peak = 0;
+    for (let index = 0; index < input.length; index += 1) {
+      const sample = input[index];
+      copy[index] = sample;
+      peak = Math.max(peak, Math.abs(sample));
     }
-    tone.audio = await blobToDataUrl(blob);
-    tone.audioType = blob.type;
-    tone.audioSize = blob.size;
-    tone.updatedAt = new Date().toISOString();
-    await dbPut(tone);
-    renderDetail();
+    state.audioPeak = Math.max(state.audioPeak, peak);
+    state.audioChunks.push(copy);
+    state.audioLength += copy.length;
+    els.audioStatus.textContent = `Recording WAV... input level ${Math.round(Math.min(1, peak) * 100)}%`;
   };
-  state.mediaRecorder.start(500);
+
+  state.audioSource.connect(state.audioProcessor);
+  state.audioProcessor.connect(state.audioContext.destination);
+  state.isRecording = true;
   els.recordButton.textContent = "Stop";
-  els.audioStatus.textContent = `Recording with ${state.mediaRecorder.mimeType || "browser default audio format"}...`;
+  els.audioStatus.textContent = "Recording WAV... play a chord or speak to test input level.";
 }
 
-function preferredAudioMimeType() {
-  const options = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/aac"
-  ];
-  return options.find((type) => MediaRecorder.isTypeSupported?.(type) && audioCanPlay(type)) || "";
+async function stopWavRecording() {
+  const tone = activeTone();
+  state.isRecording = false;
+  els.recordButton.textContent = "Record";
+  cleanupRecorderGraph();
+  if (!tone) return;
+
+  if (!state.audioLength) {
+    els.audioStatus.textContent = "Recording stopped, but no audio data was captured. Try Add Audio File or test on the hosted HTTPS page.";
+    return;
+  }
+
+  const wavBlob = encodeWav(state.audioChunks, state.audioLength, state.audioSampleRate);
+  tone.audio = await blobToDataUrl(wavBlob);
+  tone.audioType = "audio/wav";
+  tone.audioSize = wavBlob.size;
+  tone.audioPeak = state.audioPeak;
+  tone.updatedAt = new Date().toISOString();
+  await dbPut(tone);
+  renderDetail();
+  if (state.audioPeak < 0.01) {
+    els.audioStatus.textContent = `WAV saved (${formatBytes(wavBlob.size)}), but the input looked silent. Check the selected microphone/input device.`;
+  } else {
+    els.audioStatus.textContent = `WAV saved (${formatBytes(wavBlob.size)}). Input level looked good.`;
+  }
+}
+
+function cleanupRecorderGraph() {
+  state.audioProcessor?.disconnect();
+  state.audioSource?.disconnect();
+  state.audioStream?.getTracks().forEach((track) => track.stop());
+  state.audioContext?.close?.();
+  state.audioProcessor = null;
+  state.audioSource = null;
+  state.audioStream = null;
+  state.audioContext = null;
+}
+
+function encodeWav(chunks, length, sampleRate) {
+  const samples = new Float32Array(length);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    samples.set(chunk, offset);
+    offset += chunk.length;
+  });
+
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  writeString(view, 0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, "data");
+  view.setUint32(40, samples.length * 2, true);
+
+  let position = 44;
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    view.setInt16(position, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    position += 2;
+  }
+  return new Blob([view], { type: "audio/wav" });
+}
+
+function writeString(view, offset, value) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
 }
 
 function audioCanPlay(type) {
@@ -710,6 +804,7 @@ els.deleteAudioButton.addEventListener("click", async () => {
   tone.audio = null;
   tone.audioType = "";
   tone.audioSize = 0;
+  tone.audioPeak = 0;
   tone.updatedAt = new Date().toISOString();
   await dbPut(tone);
   renderDetail();
@@ -797,3 +892,7 @@ window.addEventListener("beforeunload", syncFromForm);
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 })();
+
+
+
+

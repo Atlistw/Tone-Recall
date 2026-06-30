@@ -23,9 +23,11 @@ The active prototype is a static web app using IndexedDB for local storage. It h
 1. Build a photo-first static app with local persistence.
 2. Support quick import/paste/camera capture from the tone detail screen.
 3. Keep tone context separate from pedal and knob assignment.
-4. Verify `ToneRecall.html` loads, capture/import works, zoom/pan works on the photo, and saved tones remain in the local browser library.
+4. Verify `index.html` loads, capture/import works, zoom/pan works on the photo, and saved tones remain in the local browser library.
 5. Defer computer vision, cloud sync, sharing, and automatic knob recognition.
 
 ## Run
 
-Open `ToneRecall.html` in a browser for local desktop testing. For mobile camera, microphone, and PWA behavior, serve the folder over localhost or HTTPS. New audio clips are stored as browser data URLs for simpler local playback. Browser-recorded clips may download as `.webm` on Chrome; attach `mp3`, `m4a`, or `wav` files when external player compatibility matters.
+Open `index.html` in a browser for local desktop testing. For mobile camera, microphone, and PWA behavior, serve the folder over localhost or HTTPS. New audio clips are stored as browser data URLs for simpler local playback. Browser-recorded clips are saved as `.wav` files for simpler browser and desktop playback. While recording, the input-level percentage should move above 0%; if it stays at 0%, the selected microphone/input is silent or blocked.
+
+
