@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#161514">
+    <title>Tone Recall</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="src/styles.css">
+  </head>
+  <body>
+    <header class="topBar">
+      <button id="backButton" class="iconButton hidden" type="button" aria-label="Back to library">Library</button>
+      <h1>Tone Recall</h1>
+      <button id="saveToneButton" class="primaryButton" type="button">Save Tone</button>
+    </header>
+
+    <main>
+      <section id="libraryView" class="libraryView">
+        <div class="libraryHeader">
+          <div>
+            <h2>Tone Library</h2>
+            <p id="libraryCount">0 tones</p>
+          </div>
+          <div class="libraryTools">
+            <label class="searchBox">
+              <span>Search tags</span>
+              <input id="searchInput" type="search" placeholder="crunchy, lead, Sabbath">
+            </label>
+            <div class="libraryActions">
+              <button id="exportButton" type="button">Export Library</button>
+              <label class="fileButton importButton">
+                Import Library
+                <input id="importInput" type="file" accept="application/json,.json">
+              </label>
+            </div>
+          </div>
+        </div>
+        <div id="matchedTags" class="matchedTags"></div>
+        <div id="toneGrid" class="toneGrid"></div>
+      </section>
+
+      <section id="detailView" class="detailView hidden">
+        <aside class="toneDetails">
+          <h2>Tone Details</h2>
+          <label>
+            Title
+            <input id="titleInput" type="text" placeholder="Crunchy verse tone">
+          </label>
+          <label>
+            Description and tags
+            <textarea id="descriptionInput" rows="7" placeholder="Describe the sound. Add tags like #crunchy #bridge #song-idea."></textarea>
+          </label>
+          <div class="tagPreview">
+            <span>Tags</span>
+            <div id="detailTags" class="matchedTags"></div>
+          </div>
+
+          <section class="audioPanel">
+            <div class="sectionRow">
+              <h3>Voice Memo</h3>
+              <button id="recordButton" type="button">Record</button>
+            </div>
+            <p id="audioStatus" class="helperText"></p>
+            <label class="fileButton secondaryFile">
+              Add Audio File
+              <input id="audioInput" type="file" accept="audio/*" capture>
+            </label>
+            <audio id="audioPlayer" controls></audio>
+            <a id="downloadAudioLink" class="downloadAudio hidden" href="#" download>Download Audio</a>
+            <button id="deleteAudioButton" class="dangerButton" type="button">Delete Audio</button>
+          </section>
+
+          <div class="detailActions">
+            <button id="deleteToneButton" class="dangerButton" type="button">Delete Tone</button>
+            <button id="doneButton" class="primaryButton" type="button">Done</button>
+          </div>
+        </aside>
+
+        <section class="photoPanel">
+          <div id="photoFrame" class="photoFrame">
+            <img id="tonePhoto" alt="Saved pedalboard tone photo" draggable="false">
+            <div id="photoEmpty" class="photoEmpty">No photo yet</div>
+          </div>
+          <div class="zoomControls">
+            <button id="zoomOutButton" type="button">-</button>
+            <button id="zoomResetButton" type="button">Reset</button>
+            <button id="zoomInButton" type="button">+</button>
+          </div>
+          <div class="captureActions">
+            <label class="fileButton">
+              Camera / Import
+              <input id="photoInput" type="file" accept="image/*" capture="environment">
+            </label>
+            <button id="pastePhotoButton" type="button">Paste Photo</button>
+          </div>
+        </section>
+
+        <aside class="pedalPanel">
+          <h2>Pedal Assignment</h2>
+          <p class="helperText">Select each pedal, name it, then add knob values for recall.</p>
+          <div class="pedalEntry">
+            <input id="pedalInput" type="text" placeholder="Fangs, DS-1, compressor">
+            <button id="addPedalButton" type="button">Add Pedal</button>
+          </div>
+          <div id="pedalList" class="pedalList"></div>
+          <div id="pedalEditor" class="pedalEditor hidden">
+            <label>
+              Selected pedal
+              <input id="selectedPedalName" type="text" placeholder="Pedal name">
+            </label>
+            <div class="sectionRow">
+              <h3>Knob Values</h3>
+              <button id="addKnobButton" type="button">Add Knob</button>
+            </div>
+            <div id="knobList" class="knobList"></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="src/app.js"></script>
+  </body>
+</html>
