@@ -1,12 +1,12 @@
-const CACHE = "tone-recall-v19";
+const CACHE = "tone-recall-v20";
 const ASSETS = [
   "./index.html",
-  "./src/styles.css?v=19",
-  "./src/supabase-config.js?v=19",
-  "./src/sync-core.js?v=19",
-  "./src/supabase-sync-adapter.js?v=19",
-  "./src/manual-sync.js?v=19",
-  "./src/app.js?v=19",
+  "./src/styles.css?v=20",
+  "./src/supabase-config.js?v=20",
+  "./src/sync-core.js?v=20",
+  "./src/supabase-sync-adapter.js?v=20",
+  "./src/manual-sync.js?v=20",
+  "./src/app.js?v=20",
   "./manifest.webmanifest"
 ];
 

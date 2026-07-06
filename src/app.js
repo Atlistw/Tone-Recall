@@ -27,6 +27,7 @@ const state = {
   authConfigured: false,
   authLoading: false,
   syncLoading: false,
+  autoSyncUserId: "",
   syncConflicts: []
 };
 
@@ -398,7 +399,7 @@ function renderAuthShell(message = "") {
   const statusText = message || (!state.authConfigured
     ? "Supabase is not configured. Local library remains available."
     : signedIn
-      ? "Signed in. Use Sync now to sync tone metadata."
+      ? "Signed in. The app syncs when the library loads; use Sync now to sync manually."
       : "Sign in with an invited email and password.");
   if (signedIn) {
     els.syncStatus.textContent = statusText;
@@ -435,6 +436,7 @@ async function initSupabaseAuth(message = "") {
       state.authSession = session;
       state.syncLoading = false;
       renderAuthShell();
+      maybeAutoSyncOnLibraryLoad();
     });
     renderAuthShell();
     return true;
@@ -485,7 +487,8 @@ async function signInWithPassword() {
     }
     state.authSession = data.session;
     els.authPasswordInput.value = "";
-    renderAuthShell("Signed in. Use Sync now to sync tone metadata.");
+    renderAuthShell("Signed in. Syncing latest library changes...");
+    maybeAutoSyncOnLibraryLoad();
   } catch (error) {
     state.authLoading = false;
     renderAuthShell(error?.message || "Could not sign in.");
@@ -577,6 +580,7 @@ async function logoutSupabase() {
   }
   state.authSession = null;
   state.syncLoading = false;
+  state.autoSyncUserId = "";
   renderAuthShell("Signed out. Local library remains on this device.");
 }
 
@@ -777,6 +781,14 @@ async function syncNow() {
     renderSyncConflicts();
     renderAuthShell(error?.message || "Sync failed. Local library remains available.");
   }
+}
+
+async function maybeAutoSyncOnLibraryLoad() {
+  const userId = state.authSession?.user?.id || "";
+  if (!userId || state.autoSyncUserId === userId || state.authLoading || state.syncLoading) return;
+  if (!state.authConfigured || !canRunManualMetadataSync()) return;
+  state.autoSyncUserId = userId;
+  await syncNow();
 }
 
 async function clearLocalCache() {
@@ -1640,7 +1652,8 @@ window.addEventListener("beforeunload", syncFromForm);
 (async function init() {
   state.tones = await dbAll();
   renderLibrary();
-  initSupabaseAuth();
+  await initSupabaseAuth();
+  maybeAutoSyncOnLibraryLoad();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }

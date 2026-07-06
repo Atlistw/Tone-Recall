@@ -24,14 +24,14 @@ The library search matches titles, descriptions, and tags.
 
 ## Syncing Between Devices
 
-Tone Recall does not run background sync yet. Use `Account -> Sync now` when you want to move changes between devices.
+Tone Recall syncs once when a signed-in user loads the library. It does not run continuous background sync yet, so use `Account -> Sync now` when you want to push or pull changes immediately.
 
 Recommended flow:
 
-1. On the device where you made changes, open `Account`.
-2. Press `Sync now`.
-3. On the other device, open `Account`.
-4. Press `Sync now`.
+1. Open the app and sign in. The library will try to sync once automatically.
+2. After making changes on a device, open `Account`.
+3. Press `Sync now`.
+4. On the other device, open the app or press `Sync now` to pull the latest changes.
 
 Sync currently handles:
 
