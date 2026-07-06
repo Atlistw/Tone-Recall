@@ -270,6 +270,66 @@ function loadSupabaseScript() {
   });
 }
 
+function authCallbackParams() {
+  const search = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  return {
+    code: search.get("code"),
+    searchError: search.get("error_description") || search.get("error"),
+    accessToken: hash.get("access_token"),
+    refreshToken: hash.get("refresh_token"),
+    hashError: hash.get("error_description") || hash.get("error")
+  };
+}
+
+function hasAuthCallbackParams() {
+  const params = authCallbackParams();
+  return Boolean(params.code || params.searchError || params.accessToken || params.hashError);
+}
+
+function cleanAuthCallbackUrl() {
+  if (!history.replaceState || !hasAuthCallbackParams()) return;
+  const search = new URLSearchParams(location.search);
+  for (const key of ["code", "error", "error_code", "error_description"]) {
+    search.delete(key);
+  }
+  const nextSearch = search.toString();
+  const cleanUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+  history.replaceState({}, document.title, cleanUrl);
+}
+
+async function completeAuthCallback() {
+  const params = authCallbackParams();
+  const callbackError = params.searchError || params.hashError;
+  if (callbackError) {
+    cleanAuthCallbackUrl();
+    throw new Error(callbackError);
+  }
+
+  if (params.code) {
+    renderAuthShell("Completing sign-in link...");
+    const { data, error } = await state.supabaseClient.auth.exchangeCodeForSession(params.code);
+    cleanAuthCallbackUrl();
+    if (error) {
+      throw new Error(`${error.message || "Sign-in link could not be completed."} Open the link in the same browser and device where you requested it.`);
+    }
+    return data.session || null;
+  }
+
+  if (params.accessToken && params.refreshToken) {
+    renderAuthShell("Completing sign-in link...");
+    const { data, error } = await state.supabaseClient.auth.setSession({
+      access_token: params.accessToken,
+      refresh_token: params.refreshToken
+    });
+    cleanAuthCallbackUrl();
+    if (error) throw error;
+    return data.session || null;
+  }
+
+  return null;
+}
+
 function authGateActive() {
   return Boolean(state.authConfigured && !state.authSession?.user?.email);
 }
@@ -318,6 +378,7 @@ function renderAuthShell(message = "") {
 
 async function initSupabaseAuth(message = "") {
   const config = supabaseConfig();
+  const handlingAuthCallback = hasAuthCallbackParams();
   state.authConfigured = hasSupabaseConfig(config);
   renderAuthShell(message);
   if (!state.authConfigured) return false;
@@ -333,9 +394,10 @@ async function initSupabaseAuth(message = "") {
         flowType: "pkce"
       }
     });
+    const callbackSession = await completeAuthCallback();
     const { data, error } = await state.supabaseClient.auth.getSession();
     if (error) throw error;
-    state.authSession = data.session;
+    state.authSession = callbackSession || data.session;
     state.supabaseClient.auth.onAuthStateChange((_event, session) => {
       state.authSession = session;
       state.syncLoading = false;
@@ -344,8 +406,14 @@ async function initSupabaseAuth(message = "") {
     renderAuthShell();
     return true;
   } catch (error) {
-    state.authConfigured = false;
-    renderAuthShell(error?.message || "Supabase auth could not start. Local library remains available.");
+    state.authSession = null;
+    if (handlingAuthCallback) {
+      cleanAuthCallbackUrl();
+      renderAuthShell(error?.message || "Sign-in link could not be completed. Try sending a new link.");
+    } else {
+      state.authConfigured = false;
+      renderAuthShell(error?.message || "Supabase auth could not start. Local library remains available.");
+    }
     return false;
   }
 }
