@@ -699,8 +699,9 @@ async function syncNow() {
 
 async function clearLocalCache() {
   if (state.syncLoading || state.authLoading) return;
+  const beforeCount = (await dbAll()).length;
   const confirmed = window.confirm(
-    "Clear this device's local Tone Recall cache? Cloud data will not be deleted, but unsynced local tones, photos, and audio on this device can be lost."
+    `Clear this device's local Tone Recall cache (${beforeCount} ${beforeCount === 1 ? "tone" : "tones"})? Cloud data will not be deleted, but unsynced local tones, photos, and audio on this device can be lost.`
   );
   if (!confirmed) return;
 
@@ -710,6 +711,10 @@ async function clearLocalCache() {
 
   try {
     await dbClear();
+    const remainingCount = (await dbAll()).length;
+    if (remainingCount) {
+      throw new Error(`Local cache clear did not finish. ${remainingCount} ${remainingCount === 1 ? "tone remains" : "tones remain"}.`);
+    }
     state.tones = [];
     state.activeId = null;
     state.activePedalId = null;
@@ -717,7 +722,7 @@ async function clearLocalCache() {
     els.searchInput.value = "";
     showLibrary();
     state.syncLoading = false;
-    renderAuthShell("Local cache cleared on this device. Use Sync now to download cloud tones.");
+    renderAuthShell(`Local cache cleared on this device (${beforeCount} ${beforeCount === 1 ? "tone" : "tones"} removed). Use Sync now to download cloud tones.`);
   } catch (error) {
     state.syncLoading = false;
     renderAuthShell(error?.message || "Could not clear local cache.");
