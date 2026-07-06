@@ -249,7 +249,7 @@ function createSupabaseSyncAdapter(client, options = {}) {
   };
 }
 
-module.exports = {
+const supabaseSyncAdapterApi = {
   TONE_COLUMNS,
   UNDO_COLUMNS,
   createSupabaseSyncAdapter,
@@ -258,3 +258,11 @@ module.exports = {
   undoRowToSnapshot,
   undoSnapshotToRow
 };
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = supabaseSyncAdapterApi;
+}
+
+if (typeof globalThis !== "undefined") {
+  globalThis.ToneRecallSupabaseSyncAdapter = supabaseSyncAdapterApi;
+}

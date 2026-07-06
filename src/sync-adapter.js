@@ -35,7 +35,15 @@ function toneToRemoteUpsert(tone, userId) {
   };
 }
 
-module.exports = {
+const syncAdapterApi = {
   remoteRowToTone,
   toneToRemoteUpsert
 };
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = syncAdapterApi;
+}
+
+if (typeof globalThis !== "undefined") {
+  globalThis.ToneRecallSyncAdapter = syncAdapterApi;
+}
