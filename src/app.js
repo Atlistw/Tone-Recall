@@ -45,6 +45,7 @@ const els = {
   authPasswordInput: document.getElementById("authPasswordInput"),
   authSignInButton: document.getElementById("authSignInButton"),
   authSyncButton: document.getElementById("authSyncButton"),
+  authClearLocalButton: document.getElementById("authClearLocalButton"),
   authLogoutButton: document.getElementById("authLogoutButton"),
   authNewPasswordInput: document.getElementById("authNewPasswordInput"),
   authUpdatePasswordButton: document.getElementById("authUpdatePasswordButton"),
@@ -112,6 +113,16 @@ async function dbDelete(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     tx.objectStore(STORE).delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function dbClear() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
@@ -356,6 +367,7 @@ function renderAuthShell(message = "") {
   els.authPasswordInput.disabled = state.authLoading || !state.authConfigured;
   els.authSignInButton.disabled = state.authLoading || state.syncLoading || !state.authConfigured;
   els.authSyncButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
+  els.authClearLocalButton.disabled = state.authLoading || state.syncLoading || !signedIn;
   els.authNewPasswordInput.disabled = state.authLoading || !signedIn || !state.authConfigured;
   els.authUpdatePasswordButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
   els.authLogoutButton.disabled = state.authLoading || state.syncLoading;
@@ -682,6 +694,33 @@ async function syncNow() {
     state.syncLoading = false;
     renderSyncConflicts();
     renderAuthShell(error?.message || "Sync failed. Local library remains available.");
+  }
+}
+
+async function clearLocalCache() {
+  if (state.syncLoading || state.authLoading) return;
+  const confirmed = window.confirm(
+    "Clear this device's local Tone Recall cache? Cloud data will not be deleted, but unsynced local tones, photos, and audio on this device can be lost."
+  );
+  if (!confirmed) return;
+
+  state.syncLoading = true;
+  renderSyncConflicts();
+  renderAuthShell("Clearing local cache...");
+
+  try {
+    await dbClear();
+    state.tones = [];
+    state.activeId = null;
+    state.activePedalId = null;
+    state.activePhotoId = null;
+    els.searchInput.value = "";
+    showLibrary();
+    state.syncLoading = false;
+    renderAuthShell("Local cache cleared on this device. Use Sync now to download cloud tones.");
+  } catch (error) {
+    state.syncLoading = false;
+    renderAuthShell(error?.message || "Could not clear local cache.");
   }
 }
 
@@ -1366,6 +1405,7 @@ els.authPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") signInWithPassword();
 });
 els.authSyncButton.addEventListener("click", syncNow);
+els.authClearLocalButton.addEventListener("click", clearLocalCache);
 els.authUpdatePasswordButton.addEventListener("click", updatePassword);
 els.authNewPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") updatePassword();

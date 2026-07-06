@@ -1,4 +1,4 @@
-const CACHE = "tone-recall-v14";
+const CACHE = "tone-recall-v15";
 const ASSETS = [
   "./index.html",
   "./src/styles.css",
