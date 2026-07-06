@@ -1,0 +1,26 @@
+{
+  "name": "projecttoner",
+  "version": "1.0.0",
+  "description": "Tone Recall is a capture-first tone library for saving guitar tones before they are forgotten. It runs as a local-first web app for mobile and desktop: save photos, title, description/tags, and optional voice memo.",
+  "main": "sw.js",
+  "scripts": {
+    "check:mobile": "node tools/mobile-check.js",
+    "loop:qwen-mobile": "node tools/qwen-mobile-loop.js",
+    "test": "npm run check:mobile"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Atlisas/Tone-Recall.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Atlisas/Tone-Recall/issues"
+  },
+  "homepage": "https://github.com/Atlisas/Tone-Recall#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
