@@ -50,6 +50,16 @@ function mergeRemoteMetadataWithLocalMedia(remoteMetadata, existingLocal) {
   return merged;
 }
 
+function toneSummary(tone, fallbackId = "") {
+  const id = tone?.id || fallbackId || "";
+  const title = String(tone?.title || "").trim();
+  return {
+    id,
+    title,
+    label: title || id || "Untitled tone"
+  };
+}
+
 function createSummary(plan, executed) {
   return {
     uploaded: executed.uploaded,
@@ -57,6 +67,10 @@ function createSummary(plan, executed) {
     deleted: executed.deleted,
     purged: executed.purged,
     undoSnapshots: executed.undoSnapshots,
+    uploadedTones: executed.uploadedTones,
+    downloadedTones: executed.downloadedTones,
+    deletedTones: executed.deletedTones,
+    purgedToneIds: executed.purgedToneIds,
     conflicts: plan.conflicts,
     actions: plan.actions
   };
@@ -98,7 +112,11 @@ async function runManualMetadataSync(options = {}) {
     applied: 0,
     deleted: 0,
     purged: 0,
-    undoSnapshots: 0
+    undoSnapshots: 0,
+    uploadedTones: [],
+    downloadedTones: [],
+    deletedTones: [],
+    purgedToneIds: []
   };
 
   for (const snapshot of plan.newUndoSnapshots) {
@@ -116,6 +134,7 @@ async function runManualMetadataSync(options = {}) {
       const localTone = localById.get(action.toneId) || action.tone;
       await adapter.upsertTone(metadataToneDocument(localTone));
       executed.uploaded += 1;
+      executed.uploadedTones.push(toneSummary(localTone, action.toneId));
       continue;
     }
 
@@ -125,8 +144,10 @@ async function runManualMetadataSync(options = {}) {
       await applyLocalTone(merged);
       if (action.type === "apply_remote_delete") {
         executed.deleted += 1;
+        executed.deletedTones.push(toneSummary(merged, action.toneId));
       } else {
         executed.applied += 1;
+        executed.downloadedTones.push(toneSummary(merged, action.toneId));
       }
       continue;
     }
@@ -135,9 +156,11 @@ async function runManualMetadataSync(options = {}) {
       if (action.source === "remote" && typeof adapter.purgeTone === "function") {
         await adapter.purgeTone(action.toneId);
         executed.purged += 1;
+        executed.purgedToneIds.push(action.toneId);
       } else if (action.source === "local" && typeof deleteLocalTone === "function") {
         await deleteLocalTone(action.toneId);
         executed.purged += 1;
+        executed.purgedToneIds.push(action.toneId);
       }
     }
   }

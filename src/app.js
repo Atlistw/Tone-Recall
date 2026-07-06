@@ -572,18 +572,26 @@ function canRunManualMetadataSync() {
   );
 }
 
-function syncSummaryMessage(summary) {
+function syncToneList(items) {
+  const labels = (items || []).map((item) => item.label || item.title || item.id).filter(Boolean);
+  if (!labels.length) return "";
+  if (labels.length <= 3) return ` (${labels.join(", ")})`;
+  return ` (${labels.slice(0, 3).join(", ")} +${labels.length - 3} more)`;
+}
+
+function syncSummaryMessage(summary, options = {}) {
   if (summary.conflicts.length) {
     return `Sync paused for ${summary.conflicts.length} delete/edit ${summary.conflicts.length === 1 ? "conflict" : "conflicts"}. No conflicting tone was changed.`;
   }
 
   const parts = [];
-  if (summary.uploaded) parts.push(`${summary.uploaded} uploaded`);
-  if (summary.applied) parts.push(`${summary.applied} downloaded`);
-  if (summary.deleted) parts.push(`${summary.deleted} deleted`);
+  if (summary.uploaded) parts.push(`${summary.uploaded} uploaded${syncToneList(summary.uploadedTones)}`);
+  if (summary.applied) parts.push(`${summary.applied} downloaded${syncToneList(summary.downloadedTones)}`);
+  if (summary.deleted) parts.push(`${summary.deleted} deleted${syncToneList(summary.deletedTones)}`);
   if (summary.purged) parts.push(`${summary.purged} purged`);
   if (summary.undoSnapshots) parts.push(`${summary.undoSnapshots} undo ${summary.undoSnapshots === 1 ? "snapshot" : "snapshots"}`);
-  return parts.length ? `Sync complete: ${parts.join(", ")}.` : "Sync complete. No metadata changes.";
+  const suffix = options.searchCleared ? " Search was cleared so synced tones are visible." : "";
+  return parts.length ? `Sync complete: ${parts.join(", ")}.${suffix}` : "Sync complete. No metadata changes.";
 }
 
 async function syncNow() {
@@ -617,6 +625,10 @@ async function syncNow() {
     });
 
     state.tones = await dbAll();
+    const searchCleared = Boolean((summary.applied || summary.deleted) && els.searchInput.value.trim());
+    if (searchCleared) {
+      els.searchInput.value = "";
+    }
     if (state.activeId && !visibleTones().some((tone) => tone.id === state.activeId)) {
       state.activeId = null;
       state.activePedalId = null;
@@ -629,7 +641,7 @@ async function syncNow() {
     }
 
     state.syncLoading = false;
-    renderAuthShell(syncSummaryMessage(summary));
+    renderAuthShell(syncSummaryMessage(summary, { searchCleared }));
   } catch (error) {
     state.syncLoading = false;
     renderAuthShell(error?.message || "Sync failed. Local library remains available.");

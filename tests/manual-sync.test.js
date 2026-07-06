@@ -104,6 +104,7 @@ test("manual metadata sync uploads local-only tone without media payloads", asyn
 
   assert.equal(summary.uploaded, 1);
   assert.equal(summary.applied, 0);
+  assert.deepEqual(summary.uploadedTones, [{ id: "a", title: "Tone a", label: "Tone a" }]);
   assert.equal(adapter.uploaded[0].id, "a");
   assert.equal(adapter.uploaded[0].photo, undefined);
   assert.equal(adapter.uploaded[0].audio, undefined);
@@ -125,6 +126,7 @@ test("manual metadata sync applies remote newer metadata and writes undo snapsho
 
   assert.equal(summary.applied, 1);
   assert.equal(summary.undoSnapshots, 1);
+  assert.deepEqual(summary.downloadedTones, [{ id: "a", title: "Remote newer", label: "Remote newer" }]);
   assert.equal(adapter.undoSnapshots[0].toneId, "a");
   assert.equal(adapter.undoSnapshots[0].previousData.title, "Local older");
   assert.equal(adapter.undoSnapshots[0].previousData.photo, undefined);
