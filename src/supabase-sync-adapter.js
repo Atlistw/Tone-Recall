@@ -1,5 +1,6 @@
 const TONE_COLUMNS = "id,user_id,data,created_at,updated_at,deleted_at,cloud_revision,last_synced_at";
 const UNDO_COLUMNS = "tone_id,user_id,previous_data,previous_updated_at,captured_at,reason";
+const PHOTO_BUCKET = "tone-photos";
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -49,11 +50,68 @@ function metadataToneDocument(tone) {
   if (Array.isArray(document.photos)) {
     document.photos = document.photos.map((photo, index) => ({
       id: photo?.id || `photo-${index + 1}`,
-      name: photo?.name || `Photo ${index + 1}`
+      name: photo?.name || `Photo ${index + 1}`,
+      ...(photo?.storagePath ? { storagePath: photo.storagePath } : {}),
+      ...(photo?.mimeType ? { mimeType: photo.mimeType } : {})
     }));
   }
 
   return document;
+}
+
+function extensionForMimeType(mimeType) {
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/gif") return "gif";
+  return "jpg";
+}
+
+function dataUrlParts(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:([^;,]+)?(;base64)?,(.*)$/);
+  if (!match) return null;
+  return {
+    mimeType: match[1] || "application/octet-stream",
+    isBase64: Boolean(match[2]),
+    body: match[3] || ""
+  };
+}
+
+function dataUrlToBlob(dataUrl) {
+  const parts = dataUrlParts(dataUrl);
+  if (!parts) throw new Error("Photo data is not a data URL.");
+  const binary = parts.isBase64
+    ? (typeof atob !== "undefined" ? atob(parts.body) : Buffer.from(parts.body, "base64").toString("binary"))
+    : decodeURIComponent(parts.body);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: parts.mimeType });
+}
+
+async function blobToDataUrl(blob) {
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  return `data:${blob.type || "application/octet-stream"};base64,${buffer.toString("base64")}`;
+}
+
+function photoStoragePath(userId, toneId, photo, index) {
+  const photoId = photo?.id || `photo-${index + 1}`;
+  const mimeType = photo?.mimeType || dataUrlParts(photo?.data)?.mimeType || "image/jpeg";
+  return `${userId}/${toneId}/${photoId}.${extensionForMimeType(mimeType)}`;
+}
+
+async function expectStorageResult(result) {
+  const { data, error } = await result;
+  if (error) throw error;
+  return data;
 }
 
 function localToneToToneRow(tone, userId, options = {}) {
@@ -182,6 +240,60 @@ function createSupabaseSyncAdapter(client, options = {}) {
       return toneRowToRemoteTone(data);
     },
 
+    async uploadTonePhotos(tone) {
+      requireObject(tone, "Tone");
+      if (!tone.id) throw new Error("Tone is missing id.");
+      const nextTone = clone(tone);
+      const photos = Array.isArray(nextTone.photos) ? nextTone.photos : [];
+      nextTone.photos = [];
+
+      for (const [index, photo] of photos.entries()) {
+        const nextPhoto = { ...photo };
+        if (nextPhoto.data && !nextPhoto.storagePath) {
+          const blob = dataUrlToBlob(nextPhoto.data);
+          const path = photoStoragePath(userId, nextTone.id, nextPhoto, index);
+          await expectStorageResult(
+            client
+              .storage
+              .from(PHOTO_BUCKET)
+              .upload(path, blob, {
+                contentType: blob.type || "image/jpeg",
+                upsert: true
+              })
+          );
+          nextPhoto.storagePath = path;
+          nextPhoto.mimeType = blob.type || nextPhoto.mimeType || "image/jpeg";
+        }
+        nextTone.photos.push(nextPhoto);
+      }
+
+      return nextTone;
+    },
+
+    async downloadTonePhotos(tone) {
+      requireObject(tone, "Tone");
+      const nextTone = clone(tone);
+      const photos = Array.isArray(nextTone.photos) ? nextTone.photos : [];
+      nextTone.photos = [];
+
+      for (const photo of photos) {
+        const nextPhoto = { ...photo };
+        if (!nextPhoto.data && nextPhoto.storagePath) {
+          const blob = await expectStorageResult(
+            client
+              .storage
+              .from(PHOTO_BUCKET)
+              .download(nextPhoto.storagePath)
+          );
+          nextPhoto.data = await blobToDataUrl(blob);
+          nextPhoto.mimeType = nextPhoto.mimeType || blob.type || "";
+        }
+        nextTone.photos.push(nextPhoto);
+      }
+
+      return nextTone;
+    },
+
     async softDeleteTone(toneId, deletedAt = isoNow(now)) {
       requireToneId(toneId);
       const data = await expectSupabaseResult(
@@ -252,6 +364,7 @@ function createSupabaseSyncAdapter(client, options = {}) {
 const supabaseSyncAdapterApi = {
   TONE_COLUMNS,
   UNDO_COLUMNS,
+  PHOTO_BUCKET,
   createSupabaseSyncAdapter,
   localToneToToneRow,
   toneRowToRemoteTone,

@@ -10,11 +10,42 @@ function metadataToneDocument(tone) {
   if (Array.isArray(document.photos)) {
     document.photos = document.photos.map((photo, index) => ({
       id: photo?.id || `photo-${index + 1}`,
-      name: photo?.name || `Photo ${index + 1}`
+      name: photo?.name || `Photo ${index + 1}`,
+      ...(photo?.storagePath ? { storagePath: photo.storagePath } : {}),
+      ...(photo?.mimeType ? { mimeType: photo.mimeType } : {})
     }));
   }
 
   return document;
+}
+
+function mergePhotos(remotePhotos, existingPhotos) {
+  const existingById = new Map((existingPhotos || []).map((photo) => [photo.id, photo]));
+  if (!Array.isArray(remotePhotos) || !remotePhotos.length) {
+    return clone(existingPhotos || []);
+  }
+
+  return remotePhotos.map((remotePhoto, index) => {
+    const id = remotePhoto?.id || `photo-${index + 1}`;
+    const existingPhoto = existingById.get(id) || {};
+    const merged = {
+      ...remotePhoto,
+      id,
+      name: remotePhoto?.name || existingPhoto.name || `Photo ${index + 1}`
+    };
+
+    if (existingPhoto.data && !remotePhoto?.data) {
+      merged.data = existingPhoto.data;
+    }
+    if (existingPhoto.storagePath && !merged.storagePath) {
+      merged.storagePath = existingPhoto.storagePath;
+    }
+    if (existingPhoto.mimeType && !merged.mimeType) {
+      merged.mimeType = existingPhoto.mimeType;
+    }
+
+    return merged;
+  });
 }
 
 function mergeRemoteMetadataWithLocalMedia(remoteMetadata, existingLocal) {
@@ -31,9 +62,7 @@ function mergeRemoteMetadataWithLocalMedia(remoteMetadata, existingLocal) {
     delete merged.photo;
   }
 
-  if (Object.prototype.hasOwnProperty.call(existing, "photos")) {
-    merged.photos = clone(existing.photos);
-  }
+  merged.photos = mergePhotos(remote.photos, existing.photos);
 
   if (Object.prototype.hasOwnProperty.call(existing, "audio")) {
     merged.audio = existing.audio;
@@ -60,6 +89,23 @@ function toneSummary(tone, fallbackId = "") {
   };
 }
 
+function photoStoragePathCount(tone) {
+  return (tone?.photos || []).filter((photo) => photo?.storagePath).length;
+}
+
+function photoDataCount(tone) {
+  return (tone?.photos || []).filter((photo) => photo?.data).length;
+}
+
+function hasPhotoDataMissingStorage(tone) {
+  return (tone?.photos || []).some((photo) => photo?.data && !photo?.storagePath);
+}
+
+function timestampMs(value) {
+  const time = Date.parse(value || "");
+  return Number.isFinite(time) ? time : 0;
+}
+
 function createSummary(plan, executed) {
   return {
     uploaded: executed.uploaded,
@@ -71,6 +117,8 @@ function createSummary(plan, executed) {
     downloadedTones: executed.downloadedTones,
     deletedTones: executed.deletedTones,
     purgedToneIds: executed.purgedToneIds,
+    mediaUploaded: executed.mediaUploaded,
+    mediaDownloaded: executed.mediaDownloaded,
     conflicts: plan.conflicts,
     actions: plan.actions
   };
@@ -88,12 +136,27 @@ async function runManualMetadataSync(options = {}) {
   if (!syncCore?.planToneSync) throw new Error("syncCore.planToneSync is required.");
   if (typeof applyLocalTone !== "function") throw new Error("applyLocalTone is required.");
 
+  const executed = {
+    uploaded: 0,
+    applied: 0,
+    deleted: 0,
+    purged: 0,
+    undoSnapshots: 0,
+    uploadedTones: [],
+    downloadedTones: [],
+    deletedTones: [],
+    purgedToneIds: [],
+    mediaUploaded: 0,
+    mediaDownloaded: 0
+  };
+
   const remoteTones = await adapter.listRemoteTones();
   const undoSnapshots = typeof adapter.listUndoSnapshots === "function"
     ? await adapter.listUndoSnapshots()
     : [];
 
   const localById = new Map(localTones.map((tone) => [tone.id, tone]));
+  const remoteById = new Map(remoteTones.map((tone) => [tone.id, tone]));
   const localMetadata = localTones.map(metadataToneDocument);
   const remoteMetadata = remoteTones.map((tone) => ({
     ...tone,
@@ -107,17 +170,23 @@ async function runManualMetadataSync(options = {}) {
     now
   });
 
-  const executed = {
-    uploaded: 0,
-    applied: 0,
-    deleted: 0,
-    purged: 0,
-    undoSnapshots: 0,
-    uploadedTones: [],
-    downloadedTones: [],
-    deletedTones: [],
-    purgedToneIds: []
-  };
+  const plannedToneIds = new Set(plan.actions.map((action) => action.toneId));
+  const conflictedToneIds = new Set(plan.conflicts.map((conflict) => conflict.toneId));
+  for (const tone of localTones) {
+    if (!tone?.id || plannedToneIds.has(tone.id) || conflictedToneIds.has(tone.id)) continue;
+    if (!hasPhotoDataMissingStorage(tone)) continue;
+    const remoteTone = remoteById.get(tone.id);
+    if (!remoteTone || remoteTone.deleted_at || remoteTone.deletedAt) continue;
+    if (timestampMs(tone.updatedAt || tone.updated_at) < timestampMs(remoteTone.updated_at || remoteTone.updatedAt)) continue;
+    plan.actions.push({
+      type: "upload",
+      toneId: tone.id,
+      reason: "photo-storage-backfill",
+      tone: metadataToneDocument(tone),
+      remote: clone(remoteTone)
+    });
+    plannedToneIds.add(tone.id);
+  }
 
   for (const snapshot of plan.newUndoSnapshots) {
     if (typeof adapter.upsertUndoSnapshot === "function") {
@@ -132,15 +201,34 @@ async function runManualMetadataSync(options = {}) {
   for (const action of plan.actions) {
     if (action.type === "upload") {
       const localTone = localById.get(action.toneId) || action.tone;
-      await adapter.upsertTone(metadataToneDocument(localTone));
+      let uploadTone = localTone;
+      if (typeof adapter.uploadTonePhotos === "function") {
+        const beforePaths = photoStoragePathCount(localTone);
+        uploadTone = await adapter.uploadTonePhotos(localTone);
+        const afterPaths = photoStoragePathCount(uploadTone);
+        if (afterPaths > beforePaths) {
+          executed.mediaUploaded += afterPaths - beforePaths;
+          localById.set(action.toneId, uploadTone);
+          await applyLocalTone(uploadTone);
+        }
+      }
+      await adapter.upsertTone(metadataToneDocument(uploadTone));
       executed.uploaded += 1;
-      executed.uploadedTones.push(toneSummary(localTone, action.toneId));
+      executed.uploadedTones.push(toneSummary(uploadTone, action.toneId));
       continue;
     }
 
     if (action.type === "apply_remote" || action.type === "apply_remote_delete") {
       const existing = localById.get(action.toneId);
-      const merged = mergeRemoteMetadataWithLocalMedia(action.tone, existing);
+      const beforeData = photoDataCount(action.tone);
+      const remoteTone = typeof adapter.downloadTonePhotos === "function"
+        ? await adapter.downloadTonePhotos(action.tone)
+        : action.tone;
+      const afterData = photoDataCount(remoteTone);
+      if (afterData > beforeData) {
+        executed.mediaDownloaded += afterData - beforeData;
+      }
+      const merged = mergeRemoteMetadataWithLocalMedia(remoteTone, existing);
       await applyLocalTone(merged);
       if (action.type === "apply_remote_delete") {
         executed.deleted += 1;

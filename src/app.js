@@ -192,10 +192,12 @@ function normalizeTone(tone) {
       return {
         id: photo.id || crypto.randomUUID(),
         name: photo.name || `Photo ${index + 1}`,
-        data: photo.data || photo.src || ""
+        data: photo.data || photo.src || "",
+        storagePath: photo.storagePath || "",
+        mimeType: photo.mimeType || ""
       };
     })
-    .filter((photo) => photo.data);
+    .filter((photo) => photo.data || photo.storagePath);
   if (!tone.photos.length && typeof tone.photo === "string" && tone.photo) {
     tone.photos.push(makePhoto(tone.photo, "Photo 1"));
   }
@@ -589,6 +591,8 @@ function syncSummaryMessage(summary, options = {}) {
   if (summary.applied) parts.push(`${summary.applied} downloaded${syncToneList(summary.downloadedTones)}`);
   if (summary.deleted) parts.push(`${summary.deleted} deleted${syncToneList(summary.deletedTones)}`);
   if (summary.purged) parts.push(`${summary.purged} purged`);
+  if (summary.mediaUploaded) parts.push(`${summary.mediaUploaded} ${summary.mediaUploaded === 1 ? "photo" : "photos"} uploaded`);
+  if (summary.mediaDownloaded) parts.push(`${summary.mediaDownloaded} ${summary.mediaDownloaded === 1 ? "photo" : "photos"} downloaded`);
   if (summary.undoSnapshots) parts.push(`${summary.undoSnapshots} undo ${summary.undoSnapshots === 1 ? "snapshot" : "snapshots"}`);
   const suffix = options.searchCleared ? " Search was cleared so synced tones are visible." : "";
   return parts.length ? `Sync complete: ${parts.join(", ")}.${suffix}` : "Sync complete. No metadata changes.";

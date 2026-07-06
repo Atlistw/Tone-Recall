@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 
 const {
+  PHOTO_BUCKET,
   createSupabaseSyncAdapter,
   localToneToToneRow,
   toneRowToRemoteTone,
@@ -73,6 +74,25 @@ class FakeSupabaseClient {
   constructor(resolvers = {}) {
     this.resolvers = resolvers;
     this.queries = [];
+    this.storageOperations = [];
+    this.storage = {
+      from: (bucket) => ({
+        upload: (path, body, options) => {
+          this.storageOperations.push({ bucket, operation: "upload", path, body, options });
+          const resolver = this.resolvers.storageUpload || this.resolvers.storage || this.resolvers.defaultStorage;
+          return Promise.resolve(resolver
+            ? resolver({ bucket, path, body, options })
+            : { data: { path }, error: null });
+        },
+        download: (path) => {
+          this.storageOperations.push({ bucket, operation: "download", path });
+          const resolver = this.resolvers.storageDownload || this.resolvers.storage || this.resolvers.defaultStorage;
+          return Promise.resolve(resolver
+            ? resolver({ bucket, path })
+            : { data: new Blob(["PHOTO"], { type: "image/jpeg" }), error: null });
+        }
+      })
+    };
   }
 
   from(table) {
@@ -217,6 +237,50 @@ test("adapter upserts tone metadata without media upload", async () => {
   assert.equal(remote.id, "tone-1");
   assert.equal(remote.cloud_revision, 5);
   assert.equal(client.queries[0].singleResult, true);
+});
+
+test("adapter uploads local photo data to private storage", async () => {
+  const client = new FakeSupabaseClient();
+  const adapter = createSupabaseSyncAdapter(client, { userId: USER_ID, now: NOW });
+
+  const withPhoto = await adapter.uploadTonePhotos(tone({
+    photos: [{
+      id: "photo-1",
+      name: "Board",
+      data: "data:image/jpeg;base64,UEhPVE8="
+    }]
+  }));
+
+  assert.equal(withPhoto.photos[0].storagePath, `${USER_ID}/tone-1/photo-1.jpg`);
+  assert.equal(withPhoto.photos[0].mimeType, "image/jpeg");
+  assert.equal(client.storageOperations[0].bucket, PHOTO_BUCKET);
+  assert.equal(client.storageOperations[0].operation, "upload");
+  assert.equal(client.storageOperations[0].path, `${USER_ID}/tone-1/photo-1.jpg`);
+  assert.equal(client.storageOperations[0].options.contentType, "image/jpeg");
+  assert.equal(client.storageOperations[0].options.upsert, true);
+});
+
+test("adapter downloads remote photo data from private storage", async () => {
+  const client = new FakeSupabaseClient({
+    storageDownload({ path }) {
+      assert.equal(path, `${USER_ID}/tone-1/photo-1.jpg`);
+      return { data: new Blob(["PHOTO"], { type: "image/jpeg" }), error: null };
+    }
+  });
+  const adapter = createSupabaseSyncAdapter(client, { userId: USER_ID, now: NOW });
+
+  const withPhoto = await adapter.downloadTonePhotos(tone({
+    photos: [{
+      id: "photo-1",
+      name: "Board",
+      storagePath: `${USER_ID}/tone-1/photo-1.jpg`,
+      mimeType: "image/jpeg"
+    }]
+  }));
+
+  assert.match(withPhoto.photos[0].data, /^data:image\/jpeg;base64,/);
+  assert.equal(client.storageOperations[0].bucket, PHOTO_BUCKET);
+  assert.equal(client.storageOperations[0].operation, "download");
 });
 
 test("adapter writes soft delete as metadata update", async () => {

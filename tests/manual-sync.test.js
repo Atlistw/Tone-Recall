@@ -46,6 +46,8 @@ function fakeAdapter(remoteTones = []) {
     uploaded: [],
     undoSnapshots: [],
     purged: [],
+    photoUploads: [],
+    photoDownloads: [],
     async listRemoteTones() {
       return remoteTones;
     },
@@ -63,6 +65,33 @@ function fakeAdapter(remoteTones = []) {
     async purgeTone(toneId) {
       this.purged.push(toneId);
       return { toneId };
+    },
+    async uploadTonePhotos(toneValue) {
+      const nextTone = JSON.parse(JSON.stringify(toneValue));
+      nextTone.photos = (nextTone.photos || []).map((photo) => {
+        if (!photo.data || photo.storagePath) return photo;
+        const nextPhoto = {
+          ...photo,
+          storagePath: `user-1/${nextTone.id}/${photo.id}.jpg`,
+          mimeType: "image/jpeg"
+        };
+        this.photoUploads.push(nextPhoto.storagePath);
+        return nextPhoto;
+      });
+      return nextTone;
+    },
+    async downloadTonePhotos(toneValue) {
+      const nextTone = JSON.parse(JSON.stringify(toneValue));
+      nextTone.photos = (nextTone.photos || []).map((photo) => {
+        if (photo.data || !photo.storagePath) return photo;
+        this.photoDownloads.push(photo.storagePath);
+        return {
+          ...photo,
+          data: "data:image/jpeg;base64,REMOTEPHOTO",
+          mimeType: photo.mimeType || "image/jpeg"
+        };
+      });
+      return nextTone;
     }
   };
 }
@@ -104,12 +133,18 @@ test("manual metadata sync uploads local-only tone without media payloads", asyn
 
   assert.equal(summary.uploaded, 1);
   assert.equal(summary.applied, 0);
+  assert.equal(summary.mediaUploaded, 1);
   assert.deepEqual(summary.uploadedTones, [{ id: "a", title: "Tone a", label: "Tone a" }]);
   assert.equal(adapter.uploaded[0].id, "a");
   assert.equal(adapter.uploaded[0].photo, undefined);
   assert.equal(adapter.uploaded[0].audio, undefined);
-  assert.deepEqual(adapter.uploaded[0].photos, [{ id: "photo-1", name: "Board" }]);
-  assert.deepEqual(applied, []);
+  assert.deepEqual(adapter.uploaded[0].photos, [{
+    id: "photo-1",
+    name: "Board",
+    storagePath: "user-1/a/photo-1.jpg",
+    mimeType: "image/jpeg"
+  }]);
+  assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
 });
 
 test("manual metadata sync applies remote newer metadata and writes undo snapshot", async () => {
@@ -132,6 +167,53 @@ test("manual metadata sync applies remote newer metadata and writes undo snapsho
   assert.equal(adapter.undoSnapshots[0].previousData.photo, undefined);
   assert.equal(applied[0].title, "Remote newer");
   assert.equal(applied[0].photo, "data:image/jpeg;base64,LOCALPHOTO");
+});
+
+test("manual metadata sync downloads remote photo data from storage", async () => {
+  const adapter = fakeAdapter([
+    remoteTone("remote-photo", "2026-07-06T11:00:00.000Z", {
+      title: "Remote photo",
+      photos: [{
+        id: "photo-remote",
+        name: "Remote board",
+        storagePath: "user-1/remote-photo/photo-remote.jpg",
+        mimeType: "image/jpeg"
+      }]
+    })
+  ]);
+  const applied = [];
+
+  const summary = await runManualMetadataSync({
+    localTones: [],
+    adapter,
+    syncCore,
+    now: NOW,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(summary.applied, 1);
+  assert.equal(summary.mediaDownloaded, 1);
+  assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
+  assert.deepEqual(adapter.photoDownloads, ["user-1/remote-photo/photo-remote.jpg"]);
+});
+
+test("manual metadata sync backfills photo storage for unchanged synced tone", async () => {
+  const updatedAt = "2026-07-06T10:00:00.000Z";
+  const adapter = fakeAdapter([remoteTone("a", updatedAt)]);
+  const applied = [];
+
+  const summary = await runManualMetadataSync({
+    localTones: [tone("a", updatedAt)],
+    adapter,
+    syncCore,
+    now: NOW,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(summary.uploaded, 1);
+  assert.equal(summary.mediaUploaded, 1);
+  assert.equal(adapter.uploaded[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
 });
 
 test("manual metadata sync surfaces delete/edit conflicts without applying or uploading", async () => {
