@@ -596,6 +596,24 @@ audio {
   white-space: nowrap;
 }
 
+.syncConflictList {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.syncConflictList ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.syncConflictList strong {
+  color: var(--text);
+}
+
 @media (max-width: 820px) {
   .authForm,
   .authSession,

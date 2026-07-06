@@ -216,6 +216,47 @@ test("manual metadata sync backfills photo storage for unchanged synced tone", a
   assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
 });
 
+test("manual metadata sync auto-resolves same-time remote photo storage conflict", async () => {
+  const updatedAt = "2026-07-06T10:00:00.000Z";
+  const localTone = {
+    id: "a",
+    title: "Tone a",
+    description: "",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt,
+    photos: [{ id: "photo-1", name: "Board" }],
+    audioType: "audio/wav",
+    audioSize: 123,
+    audioPeak: 0.5,
+    pedals: []
+  };
+  const adapter = fakeAdapter([
+    remoteTone("a", updatedAt, {
+      photos: [{
+        id: "photo-1",
+        name: "Board",
+        storagePath: "user-1/a/photo-1.jpg",
+        mimeType: "image/jpeg"
+      }]
+    })
+  ]);
+  const applied = [];
+
+  const summary = await runManualMetadataSync({
+    localTones: [localTone],
+    adapter,
+    syncCore,
+    now: NOW,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(summary.conflicts.length, 0);
+  assert.equal(summary.applied, 1);
+  assert.equal(summary.mediaDownloaded, 1);
+  assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
+});
+
 test("manual metadata sync surfaces delete/edit conflicts without applying or uploading", async () => {
   const adapter = fakeAdapter([
     remoteTone("a", "2026-07-06T10:00:00.000Z", {

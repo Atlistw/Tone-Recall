@@ -50,6 +50,7 @@ const els = {
   authUpdatePasswordButton: document.getElementById("authUpdatePasswordButton"),
   authStatus: document.getElementById("authStatus"),
   syncStatus: document.getElementById("syncStatus"),
+  syncConflictList: document.getElementById("syncConflictList"),
   authUserEmail: document.getElementById("authUserEmail"),
   matchedTags: document.getElementById("matchedTags"),
   saveToneButton: document.getElementById("saveToneButton"),
@@ -581,9 +582,38 @@ function syncToneList(items) {
   return ` (${labels.slice(0, 3).join(", ")} +${labels.length - 3} more)`;
 }
 
+function conflictToneLabel(conflict) {
+  return conflict.localTone?.title || conflict.remoteTone?.title || conflict.toneId || "Untitled tone";
+}
+
+function conflictTypeLabel(conflict) {
+  if (conflict.type === "delete_edit") return "Delete/edit";
+  if (conflict.type === "same_timestamp_difference") return "Same-time edit";
+  return "Sync";
+}
+
+function renderSyncConflicts(conflicts = []) {
+  if (!els.syncConflictList) return;
+  if (!conflicts.length) {
+    els.syncConflictList.classList.add("hidden");
+    els.syncConflictList.innerHTML = "";
+    return;
+  }
+
+  els.syncConflictList.classList.remove("hidden");
+  els.syncConflictList.innerHTML = `
+    <p>Unresolved conflicts</p>
+    <ul>
+      ${conflicts.map((conflict) => `
+        <li><strong>${escapeHtml(conflictTypeLabel(conflict))}:</strong> ${escapeHtml(conflictToneLabel(conflict))}</li>
+      `).join("")}
+    </ul>
+  `;
+}
+
 function syncSummaryMessage(summary, options = {}) {
   if (summary.conflicts.length) {
-    return `Sync paused for ${summary.conflicts.length} delete/edit ${summary.conflicts.length === 1 ? "conflict" : "conflicts"}. No conflicting tone was changed.`;
+    return `Sync paused for ${summary.conflicts.length} unresolved ${summary.conflicts.length === 1 ? "conflict" : "conflicts"}. No conflicting tone was changed.`;
   }
 
   const parts = [];
@@ -609,6 +639,7 @@ async function syncNow() {
   }
 
   state.syncLoading = true;
+  renderSyncConflicts();
   renderAuthShell("Syncing tone metadata...");
 
   try {
@@ -646,8 +677,10 @@ async function syncNow() {
 
     state.syncLoading = false;
     renderAuthShell(syncSummaryMessage(summary, { searchCleared }));
+    renderSyncConflicts(summary.conflicts);
   } catch (error) {
     state.syncLoading = false;
+    renderSyncConflicts();
     renderAuthShell(error?.message || "Sync failed. Local library remains available.");
   }
 }

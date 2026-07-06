@@ -106,6 +106,80 @@ function timestampMs(value) {
   return Number.isFinite(time) ? time : 0;
 }
 
+function canonicalToneWithoutPhotoTransport(tone) {
+  const document = metadataToneDocument(tone);
+  if (Array.isArray(document.photos)) {
+    document.photos = document.photos.map((photo, index) => ({
+      id: photo?.id || `photo-${index + 1}`,
+      name: photo?.name || `Photo ${index + 1}`
+    }));
+  }
+  return document;
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sameJson(left, right) {
+  return stableJson(left) === stableJson(right);
+}
+
+function hasRemotePhotoStorage(tone) {
+  return (tone?.photos || []).some((photo) => photo?.storagePath);
+}
+
+function isPhotoTransportOnlyConflict(conflict) {
+  if (conflict.type !== "same_timestamp_difference") return false;
+  return sameJson(
+    canonicalToneWithoutPhotoTransport(conflict.localTone),
+    canonicalToneWithoutPhotoTransport(conflict.remoteTone)
+  );
+}
+
+function resolvePhotoTransportConflicts(plan) {
+  const remainingConflicts = [];
+
+  for (const conflict of plan.conflicts) {
+    if (!isPhotoTransportOnlyConflict(conflict)) {
+      remainingConflicts.push(conflict);
+      continue;
+    }
+
+    if (hasRemotePhotoStorage(conflict.remoteTone)) {
+      plan.actions.push({
+        type: "apply_remote",
+        toneId: conflict.toneId,
+        reason: "photo-storage-path-remote",
+        tone: clone(conflict.remoteTone),
+        remote: clone(conflict.remoteTone)
+      });
+      continue;
+    }
+
+    if (hasPhotoDataMissingStorage(conflict.localTone)) {
+      plan.actions.push({
+        type: "upload",
+        toneId: conflict.toneId,
+        reason: "photo-storage-backfill",
+        tone: clone(conflict.localTone),
+        remote: clone(conflict.remoteTone)
+      });
+      continue;
+    }
+
+    remainingConflicts.push(conflict);
+  }
+
+  plan.conflicts = remainingConflicts;
+}
+
 function createSummary(plan, executed) {
   return {
     uploaded: executed.uploaded,
@@ -169,6 +243,7 @@ async function runManualMetadataSync(options = {}) {
     undoSnapshots,
     now
   });
+  resolvePhotoTransportConflicts(plan);
 
   const plannedToneIds = new Set(plan.actions.map((action) => action.toneId));
   const conflictedToneIds = new Set(plan.conflicts.map((conflict) => conflict.toneId));
