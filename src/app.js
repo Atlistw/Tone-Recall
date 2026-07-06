@@ -30,12 +30,14 @@ const state = {
 };
 
 const els = {
+  authView: document.getElementById("authView"),
   libraryView: document.getElementById("libraryView"),
   detailView: document.getElementById("detailView"),
   toneGrid: document.getElementById("toneGrid"),
   libraryCount: document.getElementById("libraryCount"),
   searchInput: document.getElementById("searchInput"),
   authPanel: document.getElementById("authPanel"),
+  accountPanel: document.getElementById("accountPanel"),
   authSignedOut: document.getElementById("authSignedOut"),
   authSignedIn: document.getElementById("authSignedIn"),
   authEmailInput: document.getElementById("authEmailInput"),
@@ -43,6 +45,7 @@ const els = {
   authSyncButton: document.getElementById("authSyncButton"),
   authLogoutButton: document.getElementById("authLogoutButton"),
   authStatus: document.getElementById("authStatus"),
+  syncStatus: document.getElementById("syncStatus"),
   authUserEmail: document.getElementById("authUserEmail"),
   matchedTags: document.getElementById("matchedTags"),
   saveToneButton: document.getElementById("saveToneButton"),
@@ -267,25 +270,49 @@ function loadSupabaseScript() {
   });
 }
 
+function authGateActive() {
+  return Boolean(state.authConfigured && !state.authSession?.user?.email);
+}
+
 function renderAuthShell(message = "") {
   if (!els.authPanel) return;
   const email = state.authSession?.user?.email || "";
-  els.authSignedOut.classList.toggle("hidden", Boolean(email));
-  els.authSignedIn.classList.toggle("hidden", !email);
+  const signedIn = Boolean(email);
+  const showAuthGate = authGateActive();
+  els.authView?.classList.toggle("hidden", !showAuthGate);
+  els.accountPanel?.classList.toggle("hidden", !signedIn);
+  els.authSignedOut.classList.toggle("hidden", signedIn);
+  els.authSignedIn.classList.toggle("hidden", !signedIn);
   els.authUserEmail.textContent = email;
   els.authEmailInput.disabled = state.authLoading || !state.authConfigured;
   els.authSendButton.disabled = state.authLoading || state.syncLoading || !state.authConfigured;
-  els.authSyncButton.disabled = state.authLoading || state.syncLoading || !email || !state.authConfigured;
+  els.authSyncButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
   els.authLogoutButton.disabled = state.authLoading || state.syncLoading;
+  els.saveToneButton.classList.toggle("hidden", showAuthGate);
+  els.saveToneButton.disabled = showAuthGate;
 
-  if (message) {
-    els.authStatus.textContent = message;
-  } else if (!state.authConfigured) {
-    els.authStatus.textContent = "Supabase is not configured. Local library remains available.";
-  } else if (email) {
-    els.authStatus.textContent = "Signed in. Use Sync now to sync tone metadata.";
+  if (showAuthGate) {
+    els.libraryView.classList.add("hidden");
+    els.detailView.classList.add("hidden");
+    els.backButton.classList.add("hidden");
+    state.activeId = null;
+  } else if (els.libraryView.classList.contains("hidden") && els.detailView.classList.contains("hidden")) {
+    els.libraryView.classList.remove("hidden");
+    els.backButton.classList.add("hidden");
+    renderLibrary();
+  }
+
+  const statusText = message || (!state.authConfigured
+    ? "Supabase is not configured. Local library remains available."
+    : signedIn
+      ? "Signed in. Use Sync now to sync tone metadata."
+      : "Enter an invited email to receive a sign-in link.");
+  if (signedIn) {
+    els.syncStatus.textContent = statusText;
+    els.authStatus.textContent = "";
   } else {
-    els.authStatus.textContent = "Enter an invited email to receive a sign-in link.";
+    els.authStatus.textContent = statusText;
+    if (els.syncStatus) els.syncStatus.textContent = "";
   }
 }
 
@@ -511,7 +538,12 @@ function normalizeImportedTone(item) {
 }
 
 function showLibrary() {
+  if (authGateActive()) {
+    renderAuthShell();
+    return;
+  }
   syncFromForm();
+  els.authView?.classList.add("hidden");
   els.detailView.classList.add("hidden");
   els.libraryView.classList.remove("hidden");
   els.backButton.classList.add("hidden");
@@ -519,6 +551,10 @@ function showLibrary() {
 }
 
 function showDetail(id) {
+  if (authGateActive()) {
+    renderAuthShell();
+    return;
+  }
   state.activeId = id;
   const tone = activeTone();
   if (!tone) return;
@@ -787,6 +823,10 @@ function addKnob() {
 }
 
 async function startTone() {
+  if (authGateActive()) {
+    renderAuthShell();
+    return;
+  }
   syncFromForm();
   const tone = newTone();
   state.tones.unshift(tone);

@@ -12,11 +12,29 @@
     <header class="topBar">
       <button id="backButton" class="iconButton hidden" type="button" aria-label="Back to library">Library</button>
       <h1>Tone Recall</h1>
-      <button id="saveToneButton" class="primaryButton" type="button">New Tone Photo</button>
+      <button id="saveToneButton" class="primaryButton hidden" type="button">New Tone Photo</button>
     </header>
 
     <main>
-      <section id="libraryView" class="libraryView">
+      <section id="authView" class="authView">
+        <section id="authPanel" class="authPanel" aria-label="Account">
+          <div class="authIntro">
+            <h2>Sign in to Tone Recall</h2>
+            <p>Use an invited email to sync tone metadata between devices.</p>
+          </div>
+          <div id="authSignedOut" class="authForm">
+            <label class="authEmailField">
+              <span>Email</span>
+              <input id="authEmailInput" type="email" autocomplete="email" placeholder="invited@email.com">
+            </label>
+            <button id="authSendButton" type="button">Send Link</button>
+          </div>
+          <p id="authStatus" class="helperText"></p>
+        </section>
+      </section>
+
+
+      <section id="libraryView" class="libraryView hidden">
         <div class="libraryHeader">
           <div>
             <h2>Tone Library</h2>
@@ -36,20 +54,13 @@
             </div>
           </div>
         </div>
-        <section id="authPanel" class="authPanel" aria-label="Account">
-          <div id="authSignedOut" class="authForm">
-            <label class="authEmailField">
-              <span>Account</span>
-              <input id="authEmailInput" type="email" autocomplete="email" placeholder="invited@email.com">
-            </label>
-            <button id="authSendButton" type="button">Send Link</button>
-          </div>
+        <section id="accountPanel" class="authPanel accountPanel hidden" aria-label="Account">
           <div id="authSignedIn" class="authSession hidden">
             <span id="authUserEmail"></span>
             <button id="authSyncButton" type="button">Sync now</button>
             <button id="authLogoutButton" type="button">Logout</button>
           </div>
-          <p id="authStatus" class="helperText"></p>
+          <p id="syncStatus" class="helperText"></p>
         </section>
 
         <div id="matchedTags" class="matchedTags"></div>

@@ -502,6 +502,37 @@ audio {
 
 
 
+
+.authView {
+  display: grid;
+  min-height: calc(100vh - 72px);
+  place-items: center;
+  padding: 22px;
+}
+
+.authView .authPanel {
+  width: min(100%, 520px);
+}
+
+.authIntro {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.authIntro h2 {
+  font-size: 1.25rem;
+}
+
+.authIntro p {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.accountPanel {
+  margin-bottom: 18px;
+}
+
 .authPanel {
   display: grid;
   gap: 8px;

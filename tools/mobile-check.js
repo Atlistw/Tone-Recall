@@ -54,6 +54,16 @@ function startServer() {
       return;
     }
 
+
+    if (pathname === "/src/supabase-config.js") {
+      res.writeHead(200, {
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-store"
+      });
+      res.end("window.TONE_RECALL_SUPABASE_CONFIG = { url: '', anonKey: '', redirectTo: '' };\n");
+      return;
+    }
+
     fs.readFile(filePath, (error, data) => {
       if (error) {
         res.writeHead(404);
