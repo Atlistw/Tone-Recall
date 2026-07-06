@@ -316,11 +316,12 @@ function renderAuthShell(message = "") {
   }
 }
 
-async function initSupabaseAuth() {
+async function initSupabaseAuth(message = "") {
   const config = supabaseConfig();
   state.authConfigured = hasSupabaseConfig(config);
-  renderAuthShell();
-  if (!state.authConfigured) return;
+  renderAuthShell(message);
+  if (!state.authConfigured) return false;
+  if (state.supabaseClient) return true;
 
   try {
     await loadSupabaseScript();
@@ -341,16 +342,31 @@ async function initSupabaseAuth() {
       renderAuthShell();
     });
     renderAuthShell();
+    return true;
   } catch (error) {
     state.authConfigured = false;
-    renderAuthShell("Supabase auth could not start. Local library remains available.");
+    renderAuthShell(error?.message || "Supabase auth could not start. Local library remains available.");
+    return false;
   }
 }
 
 async function sendMagicLink() {
   const config = supabaseConfig();
   const email = els.authEmailInput.value.trim();
-  if (!state.supabaseClient || !email) return;
+  if (!email) {
+    renderAuthShell("Enter an invited email first.");
+    return;
+  }
+  if (!state.supabaseClient) {
+    state.authLoading = true;
+    renderAuthShell("Starting Supabase auth...");
+    const ready = await initSupabaseAuth("Starting Supabase auth...");
+    state.authLoading = false;
+    if (!ready || !state.supabaseClient) {
+      renderAuthShell("Supabase auth is not ready. Check the project URL and publishable key.");
+      return;
+    }
+  }
   const emailRedirectTo = authRedirectUrl(config);
   if (!emailRedirectTo) {
     renderAuthShell("Serve the app over localhost or HTTPS before sending a sign-in link.");
@@ -359,20 +375,25 @@ async function sendMagicLink() {
 
   state.authLoading = true;
   renderAuthShell("Sending sign-in link...");
-  const { error } = await state.supabaseClient.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo,
-      shouldCreateUser: false
-    }
-  });
-  state.authLoading = false;
+  try {
+    const { error } = await state.supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo,
+        shouldCreateUser: false
+      }
+    });
+    state.authLoading = false;
 
-  if (error) {
-    renderAuthShell(error.message || "Could not send sign-in link.");
-    return;
+    if (error) {
+      renderAuthShell(error.message || "Could not send sign-in link.");
+      return;
+    }
+    renderAuthShell("Sign-in link sent. Check that invited email inbox.");
+  } catch (error) {
+    state.authLoading = false;
+    renderAuthShell(error?.message || "Could not send sign-in link.");
   }
-  renderAuthShell("Sign-in link sent. Check that invited email inbox.");
 }
 
 async function logoutSupabase() {
