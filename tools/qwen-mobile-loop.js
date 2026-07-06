@@ -71,7 +71,7 @@ function buildPrompt(attempt, report, diff) {
   return `You are repairing ProjectToner, a static local-first web app.
 
 Repository path:
-C:\\GameDev\\ProjectToner
+${projectRoot}
 
 Current branch:
 qwen-mobile-compat

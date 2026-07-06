@@ -8,18 +8,10 @@
     "loop:qwen-mobile": "node tools/qwen-mobile-loop.js",
     "test": "npm run check:mobile"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Atlisas/Tone-Recall.git"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/Atlisas/Tone-Recall/issues"
-  },
-  "homepage": "https://github.com/Atlisas/Tone-Recall#readme",
   "devDependencies": {
     "@playwright/test": "^1.61.1"
   }
