@@ -366,7 +366,7 @@ function renderAuthShell(message = "") {
     ? "Supabase is not configured. Local library remains available."
     : signedIn
       ? "Signed in. Use Sync now to sync tone metadata."
-      : "Enter an invited email to receive a sign-in link.");
+      : "Sign in with an invited email and password, or request a setup link.");
   if (signedIn) {
     els.syncStatus.textContent = statusText;
     els.authStatus.textContent = "";
@@ -418,6 +418,110 @@ async function initSupabaseAuth(message = "") {
   }
 }
 
+async function ensureSupabaseAuthReady(message = "Starting Supabase auth...") {
+  if (state.supabaseClient) return true;
+  state.authLoading = true;
+  renderAuthShell(message);
+  const ready = await initSupabaseAuth(message);
+  state.authLoading = false;
+  return Boolean(ready && state.supabaseClient);
+}
+
+async function signInWithPassword() {
+  const email = els.authEmailInput.value.trim();
+  const password = els.authPasswordInput.value;
+  if (!email || !password) {
+    renderAuthShell("Enter your invited email and password.");
+    return;
+  }
+
+  const ready = await ensureSupabaseAuthReady();
+  if (!ready) {
+    renderAuthShell("Supabase auth is not ready. Check the project URL and publishable key.");
+    return;
+  }
+
+  state.authLoading = true;
+  renderAuthShell("Signing in...");
+  try {
+    const { data, error } = await state.supabaseClient.auth.signInWithPassword({ email, password });
+    state.authLoading = false;
+    if (error) {
+      renderAuthShell(error.message || "Could not sign in.");
+      return;
+    }
+    state.authSession = data.session;
+    els.authPasswordInput.value = "";
+    renderAuthShell("Signed in. Use Sync now to sync tone metadata.");
+  } catch (error) {
+    state.authLoading = false;
+    renderAuthShell(error?.message || "Could not sign in.");
+  }
+}
+
+async function sendPasswordSetupLink() {
+  const config = supabaseConfig();
+  const email = els.authEmailInput.value.trim();
+  if (!email) {
+    renderAuthShell("Enter the invited email first.");
+    return;
+  }
+
+  const ready = await ensureSupabaseAuthReady();
+  if (!ready) {
+    renderAuthShell("Supabase auth is not ready. Check the project URL and publishable key.");
+    return;
+  }
+
+  const redirectTo = authRedirectUrl(config);
+  if (!redirectTo) {
+    renderAuthShell("Serve the app over localhost or HTTPS before sending a setup link.");
+    return;
+  }
+
+  state.authLoading = true;
+  renderAuthShell("Sending password setup link...");
+  try {
+    const { error } = await state.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    state.authLoading = false;
+    if (error) {
+      renderAuthShell(error.message || "Could not send password setup link.");
+      return;
+    }
+    renderAuthShell("Password setup link sent. Check that invited email inbox.");
+  } catch (error) {
+    state.authLoading = false;
+    renderAuthShell(error?.message || "Could not send password setup link.");
+  }
+}
+
+async function updatePassword() {
+  const password = els.authNewPasswordInput.value;
+  if (!state.supabaseClient || !state.authSession) {
+    renderAuthShell("Sign in before setting a password.");
+    return;
+  }
+  if (!password || password.length < 8) {
+    renderAuthShell("Use at least 8 characters for the new password.");
+    return;
+  }
+
+  state.authLoading = true;
+  renderAuthShell("Updating password...");
+  try {
+    const { error } = await state.supabaseClient.auth.updateUser({ password });
+    state.authLoading = false;
+    if (error) {
+      renderAuthShell(error.message || "Could not update password.");
+      return;
+    }
+    els.authNewPasswordInput.value = "";
+    renderAuthShell("Password updated.");
+  } catch (error) {
+    state.authLoading = false;
+    renderAuthShell(error?.message || "Could not update password.");
+  }
+}
 async function sendMagicLink() {
   const config = supabaseConfig();
   const email = els.authEmailInput.value.trim();

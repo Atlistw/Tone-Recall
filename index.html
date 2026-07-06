@@ -27,7 +27,15 @@
               <span>Email</span>
               <input id="authEmailInput" type="email" autocomplete="email" placeholder="invited@email.com">
             </label>
-            <button id="authSendButton" type="button">Send Link</button>
+            <label class="authEmailField">
+              <span>Password</span>
+              <input id="authPasswordInput" type="password" autocomplete="current-password" placeholder="Password">
+            </label>
+            <div class="authActions">
+              <button id="authSignInButton" class="primaryButton" type="button">Sign in</button>
+              <button id="authSendButton" type="button">Sign in with link</button>
+              <button id="authPasswordSetupButton" type="button">Send password setup link</button>
+            </div>
           </div>
           <p id="authStatus" class="helperText"></p>
         </section>
@@ -58,6 +66,8 @@
           <div id="authSignedIn" class="authSession hidden">
             <span id="authUserEmail"></span>
             <button id="authSyncButton" type="button">Sync now</button>
+            <input id="authNewPasswordInput" class="authNewPasswordInput" type="password" autocomplete="new-password" placeholder="New password">
+            <button id="authUpdatePasswordButton" type="button">Set password</button>
             <button id="authLogoutButton" type="button">Logout</button>
           </div>
           <p id="syncStatus" class="helperText"></p>
