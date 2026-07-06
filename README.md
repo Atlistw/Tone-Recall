@@ -68,21 +68,3 @@ Use it when a device has stale local data:
 4. Press `Sync now` to download cloud tones again.
 
 Do not use this for unsynced local work unless you are okay losing local-only tones, photos, or audio on that device.
-
-## Supabase Notes
-
-The app expects Supabase Auth, `public.tones`, `public.tone_undo_snapshots`, and private Storage buckets from `supabase/schema.sql`.
-
-Required Storage buckets for media sync:
-
-- `tone-photos`
-- `tone-audio`
-
-The public Supabase URL and anon/publishable key are safe in frontend config. Never put a service-role key in this repo or frontend code.
-
-## Local Checks
-
-```powershell
-npm.cmd run test:sync
-npm.cmd run check:mobile
-```
