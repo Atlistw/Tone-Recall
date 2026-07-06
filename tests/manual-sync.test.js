@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const syncCore = require("../src/sync-core");
 const {
+  keepCloudConflict,
+  keepThisDeviceConflict,
   metadataToneDocument,
   mergeRemoteMetadataWithLocalMedia,
   runManualMetadataSync
@@ -280,4 +282,57 @@ test("manual metadata sync surfaces delete/edit conflicts without applying or up
   assert.equal(summary.applied, 0);
   assert.deepEqual(applied, []);
   assert.deepEqual(adapter.uploaded, []);
+});
+
+test("keepCloudConflict applies remote tone and downloads photos", async () => {
+  const adapter = fakeAdapter([]);
+  const applied = [];
+  const conflict = {
+    type: "same_timestamp_difference",
+    toneId: "a",
+    localTone: tone("a", "2026-07-06T10:00:00.000Z", { title: "Local" }),
+    remoteTone: metadataToneDocument(tone("a", "2026-07-06T10:00:00.000Z", {
+      title: "Cloud",
+      photos: [{
+        id: "photo-1",
+        name: "Board",
+        storagePath: "user-1/a/photo-1.jpg",
+        mimeType: "image/jpeg"
+      }]
+    }))
+  };
+
+  const result = await keepCloudConflict({
+    adapter,
+    conflict,
+    existingLocal: conflict.localTone,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(result.summary.label, "Cloud");
+  assert.equal(applied[0].title, "Cloud");
+  assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
+});
+
+test("keepThisDeviceConflict uploads local tone and photos", async () => {
+  const adapter = fakeAdapter([]);
+  const applied = [];
+  const conflict = {
+    type: "same_timestamp_difference",
+    toneId: "a",
+    localTone: tone("a", "2026-07-06T10:00:00.000Z", { title: "Local" }),
+    remoteTone: metadataToneDocument(tone("a", "2026-07-06T10:00:00.000Z", { title: "Cloud" }))
+  };
+
+  const result = await keepThisDeviceConflict({
+    adapter,
+    conflict,
+    localTone: conflict.localTone,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(result.summary.label, "Local");
+  assert.equal(adapter.uploaded[0].title, "Local");
+  assert.equal(adapter.uploaded[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
 });

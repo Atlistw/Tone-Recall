@@ -331,9 +331,54 @@ async function runManualMetadataSync(options = {}) {
   return createSummary(plan, executed);
 }
 
+async function keepCloudConflict(options = {}) {
+  const adapter = options.adapter;
+  const conflict = options.conflict;
+  const existingLocal = options.existingLocal;
+  const applyLocalTone = options.applyLocalTone;
+
+  if (!adapter) throw new Error("adapter is required.");
+  if (!conflict?.toneId || !conflict.remoteTone) throw new Error("same-time conflict is required.");
+  if (typeof applyLocalTone !== "function") throw new Error("applyLocalTone is required.");
+
+  const remoteTone = typeof adapter.downloadTonePhotos === "function"
+    ? await adapter.downloadTonePhotos(conflict.remoteTone)
+    : conflict.remoteTone;
+  const merged = mergeRemoteMetadataWithLocalMedia(remoteTone, existingLocal);
+  await applyLocalTone(merged);
+  return {
+    tone: merged,
+    summary: toneSummary(merged, conflict.toneId)
+  };
+}
+
+async function keepThisDeviceConflict(options = {}) {
+  const adapter = options.adapter;
+  const conflict = options.conflict;
+  const localTone = options.localTone || conflict?.localTone;
+  const applyLocalTone = options.applyLocalTone;
+
+  if (!adapter) throw new Error("adapter is required.");
+  if (!conflict?.toneId || !localTone) throw new Error("same-time conflict is required.");
+  if (typeof applyLocalTone !== "function") throw new Error("applyLocalTone is required.");
+
+  let uploadTone = localTone;
+  if (typeof adapter.uploadTonePhotos === "function") {
+    uploadTone = await adapter.uploadTonePhotos(localTone);
+    await applyLocalTone(uploadTone);
+  }
+  await adapter.upsertTone(metadataToneDocument(uploadTone));
+  return {
+    tone: uploadTone,
+    summary: toneSummary(uploadTone, conflict.toneId)
+  };
+}
+
 const api = {
   metadataToneDocument,
   mergeRemoteMetadataWithLocalMedia,
+  keepCloudConflict,
+  keepThisDeviceConflict,
   runManualMetadataSync
 };
 

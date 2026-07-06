@@ -26,7 +26,8 @@ const state = {
   authSession: null,
   authConfigured: false,
   authLoading: false,
-  syncLoading: false
+  syncLoading: false,
+  syncConflicts: []
 };
 
 const els = {
@@ -604,8 +605,13 @@ function conflictTypeLabel(conflict) {
   return "Sync";
 }
 
+function canResolveConflict(conflict) {
+  return conflict.type === "same_timestamp_difference";
+}
+
 function renderSyncConflicts(conflicts = []) {
   if (!els.syncConflictList) return;
+  state.syncConflicts = conflicts;
   if (!conflicts.length) {
     els.syncConflictList.classList.add("hidden");
     els.syncConflictList.innerHTML = "";
@@ -616,11 +622,83 @@ function renderSyncConflicts(conflicts = []) {
   els.syncConflictList.innerHTML = `
     <p>Unresolved conflicts</p>
     <ul>
-      ${conflicts.map((conflict) => `
-        <li><strong>${escapeHtml(conflictTypeLabel(conflict))}:</strong> ${escapeHtml(conflictToneLabel(conflict))}</li>
+      ${conflicts.map((conflict, index) => `
+        <li>
+          <span><strong>${escapeHtml(conflictTypeLabel(conflict))}:</strong> ${escapeHtml(conflictToneLabel(conflict))}</span>
+          ${canResolveConflict(conflict) ? `
+            <span class="syncConflictActions">
+              <button type="button" data-conflict-action="keep-cloud" data-conflict-index="${index}">Keep cloud</button>
+              <button type="button" data-conflict-action="keep-local" data-conflict-index="${index}">Keep this device</button>
+            </span>
+          ` : ""}
+        </li>
       `).join("")}
     </ul>
   `;
+}
+
+function createManualSyncAdapter() {
+  const userId = state.authSession?.user?.id;
+  if (!userId) throw new Error("Sign in before resolving conflicts.");
+  return window.ToneRecallSupabaseSyncAdapter.createSupabaseSyncAdapter(state.supabaseClient, {
+    userId,
+    now: new Date().toISOString()
+  });
+}
+
+async function resolveSyncConflict(index, choice) {
+  const conflict = state.syncConflicts[index];
+  if (!conflict || !canResolveConflict(conflict)) return;
+  if (!canRunManualMetadataSync()) {
+    renderAuthShell("Sync tools are not ready. Local library remains available.");
+    return;
+  }
+
+  state.syncLoading = true;
+  renderAuthShell(choice === "keep-cloud" ? "Keeping cloud version..." : "Keeping this device version...");
+
+  try {
+    await syncFromForm();
+    const adapter = createManualSyncAdapter();
+    const localTones = await dbAll();
+    const existingLocal = localTones.find((tone) => tone.id === conflict.toneId);
+    const api = window.ToneRecallManualSync;
+
+    const result = choice === "keep-cloud"
+      ? await api.keepCloudConflict({
+        adapter,
+        conflict,
+        existingLocal,
+        applyLocalTone: async (tone) => {
+          normalizeTone(tone);
+          await dbPut(tone);
+        }
+      })
+      : await api.keepThisDeviceConflict({
+        adapter,
+        conflict,
+        localTone: existingLocal || conflict.localTone,
+        applyLocalTone: async (tone) => {
+          normalizeTone(tone);
+          await dbPut(tone);
+        }
+    });
+
+    state.tones = await dbAll();
+    if (!els.detailView.classList.contains("hidden")) {
+      renderDetail();
+    } else {
+      renderLibrary();
+    }
+    const remaining = state.syncConflicts.filter((_, conflictIndex) => conflictIndex !== index);
+    state.syncLoading = false;
+    renderAuthShell(`Resolved conflict for ${result.summary.label}.`);
+    renderSyncConflicts(remaining);
+  } catch (error) {
+    state.syncLoading = false;
+    renderAuthShell(error?.message || "Could not resolve conflict.");
+    renderSyncConflicts(state.syncConflicts);
+  }
 }
 
 function syncSummaryMessage(summary, options = {}) {
@@ -1416,6 +1494,11 @@ els.authNewPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") updatePassword();
 });
 els.authLogoutButton.addEventListener("click", logoutSupabase);
+els.syncConflictList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-conflict-action]");
+  if (!button) return;
+  resolveSyncConflict(Number(button.dataset.conflictIndex), button.dataset.conflictAction);
+});
 els.accountButton.addEventListener("click", showAccount);
 els.saveToneButton.addEventListener("click", startTone);
 els.exportButton.addEventListener("click", exportLibrary);

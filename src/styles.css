@@ -610,6 +610,21 @@ audio {
   padding-left: 18px;
 }
 
+.syncConflictList li {
+  display: grid;
+  gap: 6px;
+}
+
+.syncConflictActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.syncConflictActions button {
+  padding: 6px 10px;
+}
+
 .syncConflictList strong {
   color: var(--text);
 }
