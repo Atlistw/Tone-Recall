@@ -1,11 +1,11 @@
-# Tone Recall
+﻿# Tone Recall
 
-Tone Recall is a capture-first tone library for saving guitar tones before they are forgotten. It runs as a local-first web app for mobile and desktop: save a photo, title, description/tags, and optional voice memo.
+Tone Recall is a capture-first tone library for saving guitar tones before they are forgotten. It runs as a local-first web app for mobile and desktop: save photos, title, description/tags, and optional voice memo.
 
 ## Product Flow
 
 1. Press `Save Tone`.
-2. Take/import/paste a pedalboard photo.
+2. Take/import/paste one or more photos, such as pedalboard and amp settings.
 3. Add a title and description with tags like `#crunchy`.
 4. Optionally add pedals, then add knob-name/value rows under each selected pedal.
 5. Optionally record or attach a voice memo.
@@ -29,5 +29,6 @@ The active prototype is a static web app using IndexedDB for local storage. It h
 ## Run
 
 Open `index.html` in a browser for local desktop testing. For mobile camera, microphone, and PWA behavior, serve the folder over localhost or HTTPS. New audio clips are stored as browser data URLs for simpler local playback. Browser-recorded clips are saved as `.wav` files for simpler browser and desktop playback. While recording, the input-level percentage should move above 0%; if it stays at 0%, the selected microphone/input is silent or blocked.
+
 
 

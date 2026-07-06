@@ -1,4 +1,4 @@
-const CACHE = "tone-recall-v10";
+﻿const CACHE = "tone-recall-v13";
 const ASSETS = ["./index.html", "./src/styles.css", "./src/app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -16,5 +16,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
 });
+
+
+
+
 
 

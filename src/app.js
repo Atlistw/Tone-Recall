@@ -1,10 +1,11 @@
-const DB_NAME = "tone-recall-capture";
+﻿const DB_NAME = "tone-recall-capture";
 const STORE = "tones";
 
 const state = {
   tones: [],
   activeId: null,
   activePedalId: null,
+  activePhotoId: null,
   audioStream: null,
   audioContext: null,
   audioProcessor: null,
@@ -36,8 +37,10 @@ const els = {
   doneButton: document.getElementById("doneButton"),
   photoInput: document.getElementById("photoInput"),
   pastePhotoButton: document.getElementById("pastePhotoButton"),
+  removePhotoButton: document.getElementById("removePhotoButton"),
   tonePhoto: document.getElementById("tonePhoto"),
   photoFrame: document.getElementById("photoFrame"),
+  photoStrip: document.getElementById("photoStrip"),
   photoEmpty: document.getElementById("photoEmpty"),
   zoomOutButton: document.getElementById("zoomOutButton"),
   zoomResetButton: document.getElementById("zoomResetButton"),
@@ -126,6 +129,21 @@ function activePedal() {
   return tone?.pedals?.find((pedal) => pedal.id === state.activePedalId);
 }
 
+function activePhoto() {
+  const tone = activeTone();
+  if (!tone) return null;
+  normalizeTone(tone);
+  return tone.photos.find((photo) => photo.id === state.activePhotoId) || tone.photos[0] || null;
+}
+
+function makePhoto(data = "", name = "Photo") {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    data
+  };
+}
+
 function makePedal(name = "") {
   return {
     id: crypto.randomUUID(),
@@ -143,6 +161,23 @@ function makeKnob(index) {
 }
 
 function normalizeTone(tone) {
+  if (!tone || typeof tone !== "object") return tone;
+  const existingPhotos = Array.isArray(tone.photos) ? tone.photos : [];
+  tone.photos = existingPhotos
+    .map((photo, index) => {
+      if (typeof photo === "string") return makePhoto(photo, `Photo ${index + 1}`);
+      return {
+        id: photo.id || crypto.randomUUID(),
+        name: photo.name || `Photo ${index + 1}`,
+        data: photo.data || photo.src || ""
+      };
+    })
+    .filter((photo) => photo.data);
+  if (!tone.photos.length && typeof tone.photo === "string" && tone.photo) {
+    tone.photos.push(makePhoto(tone.photo, "Photo 1"));
+  }
+  tone.photo = tone.photos[0]?.data || "";
+
   tone.pedals = (tone.pedals || []).map((pedal) => {
     if (typeof pedal === "string") return makePedal(pedal);
     return {
@@ -235,6 +270,7 @@ function normalizeImportedTone(item) {
     title: typeof item.title === "string" ? item.title : "",
     description: typeof item.description === "string" ? item.description : "",
     photo: typeof item.photo === "string" ? item.photo : "",
+    photos: Array.isArray(item.photos) ? item.photos : [],
     audio: typeof item.audio === "string" ? item.audio : null,
     audioType: typeof item.audioType === "string" ? item.audioType : "",
     audioSize: Number.isFinite(item.audioSize) ? item.audioSize : 0,
@@ -282,6 +318,7 @@ function renderLibrary() {
   tones.forEach((tone) => {
     normalizeTone(tone);
     const hasAudio = Boolean(tone.audio);
+    const photoCount = tone.photos?.length || 0;
     const knobsComplete = hasCompleteKnobs(tone);
     const card = document.createElement("article");
     card.className = "toneCard";
@@ -293,6 +330,7 @@ function renderLibrary() {
           <span class="statusPill ${hasAudio ? "good" : "bad"}">${hasAudio ? "Audio yes" : "Audio no"}</span>
           <span class="statusPill ${knobsComplete ? "good" : "bad"}">${knobsComplete ? "Knob details yes" : "Knob details no"}</span>
         </div>
+        ${photoCount ? `<div class="photoCount">${photoCount} ${photoCount === 1 ? "image" : "images"}</div>` : ""}
       </div>
       <div class="cardBody">
         <h3>${escapeHtml(tone.title || "Untitled tone")}</h3>
@@ -334,11 +372,15 @@ function renderDetail() {
   const tone = activeTone();
   if (!tone) return;
   normalizeTone(tone);
+  if (!tone.photos.some((photo) => photo.id === state.activePhotoId)) {
+    state.activePhotoId = tone.photos[0]?.id || null;
+  }
+  const selectedPhoto = activePhoto();
   els.titleInput.value = tone.title || "";
   els.descriptionInput.value = tone.description || "";
-  els.tonePhoto.src = tone.photo || "";
-  els.tonePhoto.classList.toggle("hidden", !tone.photo);
-  els.photoEmpty.classList.toggle("hidden", Boolean(tone.photo));
+  els.tonePhoto.src = selectedPhoto?.data || "";
+  els.tonePhoto.classList.toggle("hidden", !selectedPhoto);
+  els.photoEmpty.classList.toggle("hidden", Boolean(selectedPhoto));
   if (els.audioPlayer.dataset.objectUrl) {
     URL.revokeObjectURL(els.audioPlayer.dataset.objectUrl);
     delete els.audioPlayer.dataset.objectUrl;
@@ -359,6 +401,7 @@ function renderDetail() {
   els.deleteAudioButton.classList.toggle("hidden", !tone.audio);
   renderAudioCapability();
   renderTags(els.detailTags, tagsFor(tone.description));
+  renderPhotoStrip();
   renderPedals();
   applyZoom();
 }
@@ -528,7 +571,49 @@ async function savePhotoFile(file) {
   if (!file) return;
   const tone = activeTone();
   if (!tone) return;
-  tone.photo = await blobToDataUrl(file);
+  normalizeTone(tone);
+  const data = await blobToDataUrl(file);
+  const photo = makePhoto(data, `Photo ${tone.photos.length + 1}`);
+  tone.photos.push(photo);
+  tone.photo = tone.photos[0]?.data || "";
+  state.activePhotoId = photo.id;
+  tone.updatedAt = new Date().toISOString();
+  await dbPut(tone);
+  resetZoom();
+  renderDetail();
+}
+
+function renderPhotoStrip() {
+  const tone = activeTone();
+  if (!tone) return;
+  normalizeTone(tone);
+  els.photoStrip.innerHTML = "";
+  els.photoStrip.classList.toggle("hidden", tone.photos.length <= 1);
+  tone.photos.forEach((photo, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `photoThumb ${photo.id === state.activePhotoId ? "selected" : ""}`;
+    button.innerHTML = `<img src="${photo.data}" alt="${escapeHtml(photo.name)}"><span>${escapeHtml(photo.name || `Photo ${index + 1}`)}</span>`;
+    button.addEventListener("click", () => {
+      state.activePhotoId = photo.id;
+      resetZoom();
+      renderDetail();
+    });
+    els.photoStrip.append(button);
+  });
+  els.removePhotoButton.classList.toggle("hidden", !tone.photos.length);
+}
+
+async function removeSelectedPhoto() {
+  const tone = activeTone();
+  if (!tone) return;
+  normalizeTone(tone);
+  if (!state.activePhotoId) return;
+  const index = tone.photos.findIndex((photo) => photo.id === state.activePhotoId);
+  if (index < 0) return;
+  tone.photos.splice(index, 1);
+  state.activePhotoId = tone.photos[Math.max(0, index - 1)]?.id || tone.photos[0]?.id || null;
+  tone.photo = tone.photos[0]?.data || "";
   tone.updatedAt = new Date().toISOString();
   await dbPut(tone);
   resetZoom();
@@ -775,7 +860,11 @@ els.importInput.addEventListener("change", () => {
 });
 els.backButton.addEventListener("click", showLibrary);
 els.doneButton.addEventListener("click", showLibrary);
-els.photoInput.addEventListener("change", () => savePhotoFile(els.photoInput.files?.[0]));
+els.photoInput.addEventListener("change", () => {
+  savePhotoFile(els.photoInput.files?.[0]);
+  els.photoInput.value = "";
+});
+els.removePhotoButton.addEventListener("click", removeSelectedPhoto);
 els.pastePhotoButton.addEventListener("click", pastePhoto);
 els.searchInput.addEventListener("input", renderLibrary);
 els.descriptionInput.addEventListener("input", () => {
@@ -842,7 +931,7 @@ els.zoomInButton.addEventListener("click", () => setZoom(state.zoom + 0.5));
 els.zoomOutButton.addEventListener("click", () => setZoom(state.zoom - 0.5));
 els.zoomResetButton.addEventListener("click", resetZoom);
 els.photoFrame.addEventListener("wheel", (event) => {
-  if (!activeTone()?.photo) return;
+  if (!activePhoto()) return;
   event.preventDefault();
   const rect = els.photoFrame.getBoundingClientRect();
   const x = event.clientX - rect.left - rect.width / 2;
@@ -850,7 +939,7 @@ els.photoFrame.addEventListener("wheel", (event) => {
   setZoom(state.zoom + (event.deltaY < 0 ? 0.25 : -0.25), x, y);
 });
 els.photoFrame.addEventListener("pointerdown", (event) => {
-  if (!activeTone()?.photo) return;
+  if (!activePhoto()) return;
   event.preventDefault();
   if (state.zoom === 1) {
     setZoom(2);
@@ -880,7 +969,7 @@ els.photoFrame.addEventListener("pointercancel", () => {
   applyZoom();
 });
 els.photoFrame.addEventListener("contextmenu", (event) => {
-  if (activeTone()?.photo) event.preventDefault();
+  if (activePhoto()) event.preventDefault();
 });
 
 window.addEventListener("beforeunload", syncFromForm);
@@ -892,6 +981,18 @@ window.addEventListener("beforeunload", syncFromForm);
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 })();
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

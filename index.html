@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -12,7 +12,7 @@
     <header class="topBar">
       <button id="backButton" class="iconButton hidden" type="button" aria-label="Back to library">Library</button>
       <h1>Tone Recall</h1>
-      <button id="saveToneButton" class="primaryButton" type="button">Save Tone</button>
+      <button id="saveToneButton" class="primaryButton" type="button">New Tone Photo</button>
     </header>
 
     <main>
@@ -87,12 +87,14 @@
             <button id="zoomResetButton" type="button">Reset</button>
             <button id="zoomInButton" type="button">+</button>
           </div>
+          <div id="photoStrip" class="photoStrip"></div>
           <div class="captureActions">
             <label class="fileButton">
-              Camera / Import
+              Add Photo
               <input id="photoInput" type="file" accept="image/*" capture="environment">
             </label>
             <button id="pastePhotoButton" type="button">Paste Photo</button>
+            <button id="removePhotoButton" class="dangerButton" type="button">Remove Photo</button>
           </div>
         </section>
 
@@ -122,3 +124,6 @@
     <script src="src/app.js"></script>
   </body>
 </html>
+
+
+
