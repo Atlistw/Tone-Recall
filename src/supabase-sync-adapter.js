@@ -1,6 +1,7 @@
 const TONE_COLUMNS = "id,user_id,data,created_at,updated_at,deleted_at,cloud_revision,last_synced_at";
 const UNDO_COLUMNS = "tone_id,user_id,previous_data,previous_updated_at,captured_at,reason";
 const PHOTO_BUCKET = "tone-photos";
+const AUDIO_BUCKET = "tone-audio";
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -46,6 +47,7 @@ function metadataToneDocument(tone) {
   const document = clone(tone || {});
   delete document.photo;
   delete document.audio;
+  if (!document.audioStoragePath) delete document.audioStoragePath;
 
   if (Array.isArray(document.photos)) {
     document.photos = document.photos.map((photo, index) => ({
@@ -59,11 +61,20 @@ function metadataToneDocument(tone) {
   return document;
 }
 
-function extensionForMimeType(mimeType) {
+function imageExtensionForMimeType(mimeType) {
   if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
   if (mimeType === "image/gif") return "gif";
   return "jpg";
+}
+
+function audioExtensionForMimeType(mimeType) {
+  if (mimeType === "audio/mpeg") return "mp3";
+  if (mimeType === "audio/mp4" || mimeType === "audio/aac") return "m4a";
+  if (mimeType === "audio/ogg") return "ogg";
+  if (mimeType === "audio/webm") return "webm";
+  if (mimeType === "audio/wav" || mimeType === "audio/x-wav") return "wav";
+  return "audio";
 }
 
 function dataUrlParts(dataUrl) {
@@ -78,7 +89,7 @@ function dataUrlParts(dataUrl) {
 
 function dataUrlToBlob(dataUrl) {
   const parts = dataUrlParts(dataUrl);
-  if (!parts) throw new Error("Photo data is not a data URL.");
+  if (!parts) throw new Error("Media data is not a data URL.");
   const binary = parts.isBase64
     ? (typeof atob !== "undefined" ? atob(parts.body) : Buffer.from(parts.body, "base64").toString("binary"))
     : decodeURIComponent(parts.body);
@@ -105,7 +116,12 @@ async function blobToDataUrl(blob) {
 function photoStoragePath(userId, toneId, photo, index) {
   const photoId = photo?.id || `photo-${index + 1}`;
   const mimeType = photo?.mimeType || dataUrlParts(photo?.data)?.mimeType || "image/jpeg";
-  return `${userId}/${toneId}/${photoId}.${extensionForMimeType(mimeType)}`;
+  return `${userId}/${toneId}/${photoId}.${imageExtensionForMimeType(mimeType)}`;
+}
+
+function audioStoragePath(userId, toneId, tone) {
+  const mimeType = tone?.audioType || dataUrlParts(tone?.audio)?.mimeType || "audio/wav";
+  return `${userId}/${toneId}/audio.${audioExtensionForMimeType(mimeType)}`;
 }
 
 async function expectStorageResult(result) {
@@ -294,6 +310,46 @@ function createSupabaseSyncAdapter(client, options = {}) {
       return nextTone;
     },
 
+    async uploadToneAudio(tone) {
+      requireObject(tone, "Tone");
+      if (!tone.id) throw new Error("Tone is missing id.");
+      const nextTone = clone(tone);
+      if (nextTone.audio && !nextTone.audioStoragePath) {
+        const blob = dataUrlToBlob(nextTone.audio);
+        const path = audioStoragePath(userId, nextTone.id, nextTone);
+        await expectStorageResult(
+          client
+            .storage
+            .from(AUDIO_BUCKET)
+            .upload(path, blob, {
+              contentType: blob.type || nextTone.audioType || "audio/wav",
+              upsert: true
+            })
+        );
+        nextTone.audioStoragePath = path;
+        nextTone.audioType = blob.type || nextTone.audioType || "audio/wav";
+        nextTone.audioSize = nextTone.audioSize || blob.size || 0;
+      }
+      return nextTone;
+    },
+
+    async downloadToneAudio(tone) {
+      requireObject(tone, "Tone");
+      const nextTone = clone(tone);
+      if (!nextTone.audio && nextTone.audioStoragePath) {
+        const blob = await expectStorageResult(
+          client
+            .storage
+            .from(AUDIO_BUCKET)
+            .download(nextTone.audioStoragePath)
+        );
+        nextTone.audio = await blobToDataUrl(blob);
+        nextTone.audioType = nextTone.audioType || blob.type || "";
+        nextTone.audioSize = nextTone.audioSize || blob.size || 0;
+      }
+      return nextTone;
+    },
+
     async softDeleteTone(toneId, deletedAt = isoNow(now)) {
       requireToneId(toneId);
       const data = await expectSupabaseResult(
@@ -365,6 +421,7 @@ const supabaseSyncAdapterApi = {
   TONE_COLUMNS,
   UNDO_COLUMNS,
   PHOTO_BUCKET,
+  AUDIO_BUCKET,
   createSupabaseSyncAdapter,
   localToneToToneRow,
   toneRowToRemoteTone,

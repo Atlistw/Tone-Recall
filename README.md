@@ -1,18 +1,88 @@
-﻿# Tone Recall
+# Tone Recall
 
-Tone Recall is a capture-first tone library for saving guitar tones before they are forgotten. It runs as a local-first web app for mobile and desktop: save photos, title, description/tags, and optional voice memo.
+Tone Recall is a local-first web app for saving guitar tones before they are forgotten. It works on mobile and desktop and can sync tone metadata, photos, and audio through Supabase for invited users.
 
-## Product Flow
+## What It Saves
 
-1. Press `Save Tone`.
-2. Take/import/paste one or more photos, such as pedalboard and amp settings.
-3. Add a title and description with tags like `#crunchy`.
-4. Optionally add pedals, then add knob-name/value rows under each selected pedal.
-5. Optionally record or attach a voice memo.
-6. Zoom and pan the saved photo when checking details.
+- Tone title and description
+- Searchable tags in descriptions, such as `#crunchy`
+- One or more tone photos
+- Pedal names and knob values
+- Optional voice memo or audio file
+
+## Basic Use
+
+1. Open the app.
+2. Sign in with the invited email and password.
+3. Press `New Tone Photo`.
+4. Take, import, or paste one or more photos.
+5. Add a title, description, tags, pedals, and knob values.
+6. Optionally record or attach a voice memo.
 7. Return to the library.
 
-The library search matches titles, descriptions, and tags, then shows matching tones as cards.
+The library search matches titles, descriptions, and tags.
 
+## Syncing Between Devices
 
+Tone Recall does not run background sync yet. Use `Account -> Sync now` when you want to move changes between devices.
 
+Recommended flow:
+
+1. On the device where you made changes, open `Account`.
+2. Press `Sync now`.
+3. On the other device, open `Account`.
+4. Press `Sync now`.
+
+Sync currently handles:
+
+- tone metadata
+- descriptions and tags
+- pedals and knob values
+- soft deletes
+- photos
+- audio files and voice memos
+
+Sync does not currently handle:
+
+- automatic background sync
+- multi-user shared tone libraries
+
+## Conflict Resolution
+
+If the same tone has conflicting same-time edits, the Account screen shows the conflict with two buttons:
+
+- `Keep cloud`: use the cloud version on this device.
+- `Keep this device`: upload this device's version to cloud.
+
+Delete/edit conflicts are still paused for safety and should be resolved carefully in a later version.
+
+## Clear Local Cache
+
+`Account -> Clear local cache` clears only this device's local IndexedDB cache. It does not delete cloud data.
+
+Use it when a device has stale local data:
+
+1. Open `Account`.
+2. Press `Clear local cache`.
+3. Confirm the warning.
+4. Press `Sync now` to download cloud tones again.
+
+Do not use this for unsynced local work unless you are okay losing local-only tones, photos, or audio on that device.
+
+## Supabase Notes
+
+The app expects Supabase Auth, `public.tones`, `public.tone_undo_snapshots`, and private Storage buckets from `supabase/schema.sql`.
+
+Required Storage buckets for media sync:
+
+- `tone-photos`
+- `tone-audio`
+
+The public Supabase URL and anon/publishable key are safe in frontend config. Never put a service-role key in this repo or frontend code.
+
+## Local Checks
+
+```powershell
+npm.cmd run test:sync
+npm.cmd run check:mobile
+```

@@ -20,10 +20,11 @@ function tone(id, updatedAt, extra = {}) {
     updatedAt,
     photo: extra.photo || "data:image/jpeg;base64,LOCALPHOTO",
     photos: extra.photos || [{ id: "photo-1", name: "Board", data: "data:image/jpeg;base64,LOCALPHOTO" }],
-    audio: extra.audio || "data:audio/wav;base64,LOCALAUDIO",
-    audioType: "audio/wav",
-    audioSize: 123,
-    audioPeak: 0.5,
+    audio: Object.prototype.hasOwnProperty.call(extra, "audio") ? extra.audio : "data:audio/wav;base64,LOCALAUDIO",
+    audioType: extra.audioType || "audio/wav",
+    audioSize: Object.prototype.hasOwnProperty.call(extra, "audioSize") ? extra.audioSize : 123,
+    audioPeak: Object.prototype.hasOwnProperty.call(extra, "audioPeak") ? extra.audioPeak : 0.5,
+    ...(extra.audioStoragePath ? { audioStoragePath: extra.audioStoragePath } : {}),
     pedals: extra.pedals || [],
     ...(extra.deletedAt ? { deletedAt: extra.deletedAt } : {})
   };
@@ -50,6 +51,8 @@ function fakeAdapter(remoteTones = []) {
     purged: [],
     photoUploads: [],
     photoDownloads: [],
+    audioUploads: [],
+    audioDownloads: [],
     async listRemoteTones() {
       return remoteTones;
     },
@@ -94,6 +97,25 @@ function fakeAdapter(remoteTones = []) {
         };
       });
       return nextTone;
+    },
+    async uploadToneAudio(toneValue) {
+      const nextTone = JSON.parse(JSON.stringify(toneValue));
+      if (nextTone.audio && !nextTone.audioStoragePath) {
+        nextTone.audioStoragePath = `user-1/${nextTone.id}/audio.wav`;
+        nextTone.audioType = nextTone.audioType || "audio/wav";
+        this.audioUploads.push(nextTone.audioStoragePath);
+      }
+      return nextTone;
+    },
+    async downloadToneAudio(toneValue) {
+      const nextTone = JSON.parse(JSON.stringify(toneValue));
+      if (!nextTone.audio && nextTone.audioStoragePath) {
+        this.audioDownloads.push(nextTone.audioStoragePath);
+        nextTone.audio = "data:audio/wav;base64,REMOTEAUDIO";
+        nextTone.audioType = nextTone.audioType || "audio/wav";
+        nextTone.audioSize = nextTone.audioSize || 11;
+      }
+      return nextTone;
     }
   };
 }
@@ -105,6 +127,7 @@ test("metadataToneDocument strips local photo and audio payloads", () => {
   assert.equal(metadata.audio, undefined);
   assert.deepEqual(metadata.photos, [{ id: "photo-1", name: "Board" }]);
   assert.equal(metadata.audioType, "audio/wav");
+  assert.equal(metadata.audioStoragePath, undefined);
   assert.equal(metadata.title, "Tone a");
 });
 
@@ -135,11 +158,14 @@ test("manual metadata sync uploads local-only tone without media payloads", asyn
 
   assert.equal(summary.uploaded, 1);
   assert.equal(summary.applied, 0);
-  assert.equal(summary.mediaUploaded, 1);
+  assert.equal(summary.mediaUploaded, 2);
+  assert.equal(summary.photoUploaded, 1);
+  assert.equal(summary.audioUploaded, 1);
   assert.deepEqual(summary.uploadedTones, [{ id: "a", title: "Tone a", label: "Tone a" }]);
   assert.equal(adapter.uploaded[0].id, "a");
   assert.equal(adapter.uploaded[0].photo, undefined);
   assert.equal(adapter.uploaded[0].audio, undefined);
+  assert.equal(adapter.uploaded[0].audioStoragePath, "user-1/a/audio.wav");
   assert.deepEqual(adapter.uploaded[0].photos, [{
     id: "photo-1",
     name: "Board",
@@ -147,6 +173,7 @@ test("manual metadata sync uploads local-only tone without media payloads", asyn
     mimeType: "image/jpeg"
   }]);
   assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].audioStoragePath, "user-1/a/audio.wav");
 });
 
 test("manual metadata sync applies remote newer metadata and writes undo snapshot", async () => {
@@ -195,8 +222,36 @@ test("manual metadata sync downloads remote photo data from storage", async () =
 
   assert.equal(summary.applied, 1);
   assert.equal(summary.mediaDownloaded, 1);
+  assert.equal(summary.photoDownloaded, 1);
   assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
   assert.deepEqual(adapter.photoDownloads, ["user-1/remote-photo/photo-remote.jpg"]);
+});
+
+test("manual metadata sync downloads remote audio data from storage", async () => {
+  const adapter = fakeAdapter([
+    remoteTone("remote-audio", "2026-07-06T11:00:00.000Z", {
+      title: "Remote audio",
+      audio: null,
+      audioStoragePath: "user-1/remote-audio/audio.wav",
+      audioType: "audio/wav",
+      audioSize: 11
+    })
+  ]);
+  const applied = [];
+
+  const summary = await runManualMetadataSync({
+    localTones: [],
+    adapter,
+    syncCore,
+    now: NOW,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(summary.applied, 1);
+  assert.equal(summary.mediaDownloaded, 1);
+  assert.equal(summary.audioDownloaded, 1);
+  assert.equal(applied[0].audio, "data:audio/wav;base64,REMOTEAUDIO");
+  assert.deepEqual(adapter.audioDownloads, ["user-1/remote-audio/audio.wav"]);
 });
 
 test("manual metadata sync backfills photo storage for unchanged synced tone", async () => {
@@ -213,9 +268,13 @@ test("manual metadata sync backfills photo storage for unchanged synced tone", a
   });
 
   assert.equal(summary.uploaded, 1);
-  assert.equal(summary.mediaUploaded, 1);
+  assert.equal(summary.mediaUploaded, 2);
+  assert.equal(summary.photoUploaded, 1);
+  assert.equal(summary.audioUploaded, 1);
   assert.equal(adapter.uploaded[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(adapter.uploaded[0].audioStoragePath, "user-1/a/audio.wav");
   assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].audioStoragePath, "user-1/a/audio.wav");
 });
 
 test("manual metadata sync auto-resolves same-time remote photo storage conflict", async () => {
@@ -259,6 +318,48 @@ test("manual metadata sync auto-resolves same-time remote photo storage conflict
   assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
 });
 
+test("manual metadata sync auto-resolves same-time remote audio storage conflict", async () => {
+  const updatedAt = "2026-07-06T10:00:00.000Z";
+  const localTone = {
+    id: "a",
+    title: "Tone a",
+    description: "",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt,
+    photos: [],
+    audioType: "audio/wav",
+    audioSize: 123,
+    audioPeak: 0.5,
+    pedals: []
+  };
+  const adapter = fakeAdapter([
+    remoteTone("a", updatedAt, {
+      photos: [],
+      audio: null,
+      audioStoragePath: "user-1/a/audio.wav",
+      audioType: "audio/wav",
+      audioSize: 123,
+      audioPeak: 0.5
+    })
+  ]);
+  const applied = [];
+
+  const summary = await runManualMetadataSync({
+    localTones: [localTone],
+    adapter,
+    syncCore,
+    now: NOW,
+    applyLocalTone: async (nextTone) => applied.push(nextTone)
+  });
+
+  assert.equal(summary.conflicts.length, 0);
+  assert.equal(summary.applied, 1);
+  assert.equal(summary.mediaDownloaded, 1);
+  assert.equal(summary.audioDownloaded, 1);
+  assert.equal(applied[0].audioStoragePath, "user-1/a/audio.wav");
+  assert.equal(applied[0].audio, "data:audio/wav;base64,REMOTEAUDIO");
+});
+
 test("manual metadata sync surfaces delete/edit conflicts without applying or uploading", async () => {
   const adapter = fakeAdapter([
     remoteTone("a", "2026-07-06T10:00:00.000Z", {
@@ -284,7 +385,7 @@ test("manual metadata sync surfaces delete/edit conflicts without applying or up
   assert.deepEqual(adapter.uploaded, []);
 });
 
-test("keepCloudConflict applies remote tone and downloads photos", async () => {
+test("keepCloudConflict applies remote tone and downloads media", async () => {
   const adapter = fakeAdapter([]);
   const applied = [];
   const conflict = {
@@ -298,7 +399,10 @@ test("keepCloudConflict applies remote tone and downloads photos", async () => {
         name: "Board",
         storagePath: "user-1/a/photo-1.jpg",
         mimeType: "image/jpeg"
-      }]
+      }],
+      audio: null,
+      audioStoragePath: "user-1/a/audio.wav",
+      audioType: "audio/wav"
     }))
   };
 
@@ -312,9 +416,10 @@ test("keepCloudConflict applies remote tone and downloads photos", async () => {
   assert.equal(result.summary.label, "Cloud");
   assert.equal(applied[0].title, "Cloud");
   assert.equal(applied[0].photos[0].data, "data:image/jpeg;base64,REMOTEPHOTO");
+  assert.equal(applied[0].audio, "data:audio/wav;base64,REMOTEAUDIO");
 });
 
-test("keepThisDeviceConflict uploads local tone and photos", async () => {
+test("keepThisDeviceConflict uploads local tone and media", async () => {
   const adapter = fakeAdapter([]);
   const applied = [];
   const conflict = {
@@ -334,5 +439,7 @@ test("keepThisDeviceConflict uploads local tone and photos", async () => {
   assert.equal(result.summary.label, "Local");
   assert.equal(adapter.uploaded[0].title, "Local");
   assert.equal(adapter.uploaded[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(adapter.uploaded[0].audioStoragePath, "user-1/a/audio.wav");
   assert.equal(applied[0].photos[0].storagePath, "user-1/a/photo-1.jpg");
+  assert.equal(applied[0].audioStoragePath, "user-1/a/audio.wav");
 });

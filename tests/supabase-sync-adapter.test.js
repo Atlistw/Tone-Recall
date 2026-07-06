@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 
 const {
+  AUDIO_BUCKET,
   PHOTO_BUCKET,
   createSupabaseSyncAdapter,
   localToneToToneRow,
@@ -280,6 +281,46 @@ test("adapter downloads remote photo data from private storage", async () => {
 
   assert.match(withPhoto.photos[0].data, /^data:image\/jpeg;base64,/);
   assert.equal(client.storageOperations[0].bucket, PHOTO_BUCKET);
+  assert.equal(client.storageOperations[0].operation, "download");
+});
+
+test("adapter uploads local audio data to private storage", async () => {
+  const client = new FakeSupabaseClient();
+  const adapter = createSupabaseSyncAdapter(client, { userId: USER_ID, now: NOW });
+
+  const withAudio = await adapter.uploadToneAudio(tone({
+    audio: "data:audio/wav;base64,QVVESU8=",
+    audioType: "audio/wav",
+    audioSize: 5
+  }));
+
+  assert.equal(withAudio.audioStoragePath, `${USER_ID}/tone-1/audio.wav`);
+  assert.equal(withAudio.audioType, "audio/wav");
+  assert.equal(client.storageOperations[0].bucket, AUDIO_BUCKET);
+  assert.equal(client.storageOperations[0].operation, "upload");
+  assert.equal(client.storageOperations[0].path, `${USER_ID}/tone-1/audio.wav`);
+  assert.equal(client.storageOperations[0].options.contentType, "audio/wav");
+  assert.equal(client.storageOperations[0].options.upsert, true);
+});
+
+test("adapter downloads remote audio data from private storage", async () => {
+  const client = new FakeSupabaseClient({
+    storageDownload({ path }) {
+      assert.equal(path, `${USER_ID}/tone-1/audio.wav`);
+      return { data: new Blob(["AUDIO"], { type: "audio/wav" }), error: null };
+    }
+  });
+  const adapter = createSupabaseSyncAdapter(client, { userId: USER_ID, now: NOW });
+
+  const withAudio = await adapter.downloadToneAudio(tone({
+    audio: null,
+    audioStoragePath: `${USER_ID}/tone-1/audio.wav`,
+    audioType: "audio/wav"
+  }));
+
+  assert.match(withAudio.audio, /^data:audio\/wav;base64,/);
+  assert.equal(withAudio.audioType, "audio/wav");
+  assert.equal(client.storageOperations[0].bucket, AUDIO_BUCKET);
   assert.equal(client.storageOperations[0].operation, "download");
 });
 

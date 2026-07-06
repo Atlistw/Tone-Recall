@@ -150,6 +150,7 @@ function newTone() {
     audioType: "",
     audioSize: 0,
     audioPeak: 0,
+    audioStoragePath: "",
     pedals: [],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
@@ -215,6 +216,7 @@ function normalizeTone(tone) {
     tone.photos.push(makePhoto(tone.photo, "Photo 1"));
   }
   tone.photo = tone.photos[0]?.data || "";
+  tone.audioStoragePath = tone.audioStoragePath || "";
 
   tone.pedals = (tone.pedals || []).map((pedal) => {
     if (typeof pedal === "string") return makePedal(pedal);
@@ -711,8 +713,10 @@ function syncSummaryMessage(summary, options = {}) {
   if (summary.applied) parts.push(`${summary.applied} downloaded${syncToneList(summary.downloadedTones)}`);
   if (summary.deleted) parts.push(`${summary.deleted} deleted${syncToneList(summary.deletedTones)}`);
   if (summary.purged) parts.push(`${summary.purged} purged`);
-  if (summary.mediaUploaded) parts.push(`${summary.mediaUploaded} ${summary.mediaUploaded === 1 ? "photo" : "photos"} uploaded`);
-  if (summary.mediaDownloaded) parts.push(`${summary.mediaDownloaded} ${summary.mediaDownloaded === 1 ? "photo" : "photos"} downloaded`);
+  if (summary.photoUploaded) parts.push(`${summary.photoUploaded} ${summary.photoUploaded === 1 ? "photo" : "photos"} uploaded`);
+  if (summary.photoDownloaded) parts.push(`${summary.photoDownloaded} ${summary.photoDownloaded === 1 ? "photo" : "photos"} downloaded`);
+  if (summary.audioUploaded) parts.push(`${summary.audioUploaded} audio uploaded`);
+  if (summary.audioDownloaded) parts.push(`${summary.audioDownloaded} audio downloaded`);
   if (summary.undoSnapshots) parts.push(`${summary.undoSnapshots} undo ${summary.undoSnapshots === 1 ? "snapshot" : "snapshots"}`);
   const suffix = options.searchCleared ? " Search was cleared so synced tones are visible." : "";
   return parts.length ? `Sync complete: ${parts.join(", ")}.${suffix}` : "Sync complete. No metadata changes.";
@@ -874,6 +878,7 @@ function normalizeImportedTone(item) {
     audioType: typeof item.audioType === "string" ? item.audioType : "",
     audioSize: Number.isFinite(item.audioSize) ? item.audioSize : 0,
     audioPeak: Number.isFinite(item.audioPeak) ? item.audioPeak : 0,
+    audioStoragePath: typeof item.audioStoragePath === "string" ? item.audioStoragePath : "",
     pedals: Array.isArray(item.pedals) ? item.pedals : [],
     createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
     updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now
@@ -1339,6 +1344,7 @@ async function stopWavRecording() {
   tone.audioType = "audio/wav";
   tone.audioSize = wavBlob.size;
   tone.audioPeak = state.audioPeak;
+  tone.audioStoragePath = "";
   tone.updatedAt = new Date().toISOString();
   await dbPut(tone);
   renderDetail();
@@ -1531,6 +1537,7 @@ els.audioInput.addEventListener("change", async () => {
   tone.audio = await blobToDataUrl(file);
   tone.audioType = file.type;
   tone.audioSize = file.size;
+  tone.audioStoragePath = "";
   tone.updatedAt = new Date().toISOString();
   await dbPut(tone);
   renderDetail();
@@ -1542,6 +1549,7 @@ els.deleteAudioButton.addEventListener("click", async () => {
   tone.audioType = "";
   tone.audioSize = 0;
   tone.audioPeak = 0;
+  tone.audioStoragePath = "";
   tone.updatedAt = new Date().toISOString();
   await dbPut(tone);
   renderDetail();
