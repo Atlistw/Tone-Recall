@@ -41,9 +41,12 @@ const els = {
   authSignedOut: document.getElementById("authSignedOut"),
   authSignedIn: document.getElementById("authSignedIn"),
   authEmailInput: document.getElementById("authEmailInput"),
-  authSendButton: document.getElementById("authSendButton"),
+  authPasswordInput: document.getElementById("authPasswordInput"),
+  authSignInButton: document.getElementById("authSignInButton"),
   authSyncButton: document.getElementById("authSyncButton"),
   authLogoutButton: document.getElementById("authLogoutButton"),
+  authNewPasswordInput: document.getElementById("authNewPasswordInput"),
+  authUpdatePasswordButton: document.getElementById("authUpdatePasswordButton"),
   authStatus: document.getElementById("authStatus"),
   syncStatus: document.getElementById("syncStatus"),
   authUserEmail: document.getElementById("authUserEmail"),
@@ -345,8 +348,11 @@ function renderAuthShell(message = "") {
   els.authSignedIn.classList.toggle("hidden", !signedIn);
   els.authUserEmail.textContent = email;
   els.authEmailInput.disabled = state.authLoading || !state.authConfigured;
-  els.authSendButton.disabled = state.authLoading || state.syncLoading || !state.authConfigured;
+  els.authPasswordInput.disabled = state.authLoading || !state.authConfigured;
+  els.authSignInButton.disabled = state.authLoading || state.syncLoading || !state.authConfigured;
   els.authSyncButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
+  els.authNewPasswordInput.disabled = state.authLoading || !signedIn || !state.authConfigured;
+  els.authUpdatePasswordButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
   els.authLogoutButton.disabled = state.authLoading || state.syncLoading;
   els.saveToneButton.classList.toggle("hidden", showAuthGate);
   els.saveToneButton.disabled = showAuthGate;
@@ -366,7 +372,7 @@ function renderAuthShell(message = "") {
     ? "Supabase is not configured. Local library remains available."
     : signedIn
       ? "Signed in. Use Sync now to sync tone metadata."
-      : "Sign in with an invited email and password, or request a setup link.");
+      : "Sign in with an invited email and password.");
   if (signedIn) {
     els.syncStatus.textContent = statusText;
     els.authStatus.textContent = "";
@@ -456,42 +462,6 @@ async function signInWithPassword() {
   } catch (error) {
     state.authLoading = false;
     renderAuthShell(error?.message || "Could not sign in.");
-  }
-}
-
-async function sendPasswordSetupLink() {
-  const config = supabaseConfig();
-  const email = els.authEmailInput.value.trim();
-  if (!email) {
-    renderAuthShell("Enter the invited email first.");
-    return;
-  }
-
-  const ready = await ensureSupabaseAuthReady();
-  if (!ready) {
-    renderAuthShell("Supabase auth is not ready. Check the project URL and publishable key.");
-    return;
-  }
-
-  const redirectTo = authRedirectUrl(config);
-  if (!redirectTo) {
-    renderAuthShell("Serve the app over localhost or HTTPS before sending a setup link.");
-    return;
-  }
-
-  state.authLoading = true;
-  renderAuthShell("Sending password setup link...");
-  try {
-    const { error } = await state.supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
-    state.authLoading = false;
-    if (error) {
-      renderAuthShell(error.message || "Could not send password setup link.");
-      return;
-    }
-    renderAuthShell("Password setup link sent. Check that invited email inbox.");
-  } catch (error) {
-    state.authLoading = false;
-    renderAuthShell(error?.message || "Could not send password setup link.");
   }
 }
 
@@ -1314,11 +1284,18 @@ function resetZoom() {
   applyZoom();
 }
 
-els.authSendButton.addEventListener("click", sendMagicLink);
+els.authSignInButton.addEventListener("click", signInWithPassword);
 els.authEmailInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") sendMagicLink();
+  if (event.key === "Enter") signInWithPassword();
+});
+els.authPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") signInWithPassword();
 });
 els.authSyncButton.addEventListener("click", syncNow);
+els.authUpdatePasswordButton.addEventListener("click", updatePassword);
+els.authNewPasswordInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") updatePassword();
+});
 els.authLogoutButton.addEventListener("click", logoutSupabase);
 els.saveToneButton.addEventListener("click", startTone);
 els.exportButton.addEventListener("click", exportLibrary);
