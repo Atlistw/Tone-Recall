@@ -1,27 +1,31 @@
 ﻿# Sync Plan
 
-This note records the intended sync architecture. Full Supabase tone sync is not implemented yet.
+This note records the current sync architecture and remaining follow-up work.
 
 ## Current State
 
-Tone Recall remains local-first. IndexedDB is still the source used by the current UI. Manual JSON export/import stays available.
+Tone Recall remains local-first. IndexedDB is still the source used by the UI, and manual JSON export/import stays available.
 
 The repo now has:
 
 - a Supabase schema/setup foundation
-- a minimal Supabase auth shell for invite-only email magic links
+- a minimal Supabase auth/account shell for invited users
 - a provider-agnostic sync core with mock tests
+- a real Supabase metadata/media adapter with fake-client tests
+- a manual `Sync now` path
+- a conservative one-shot sync when a signed-in user loads the library
 
-The app still does not upload or download tones, photos, audio, JSON imports, or deletes.
+The app can upload/download tone metadata, soft deletes, photos, and audio. It does not run continuous background sync or upload imported JSON automatically without the normal sync path.
 
 ## Auth
 
-- Email magic-link login.
+- Email/password login is the primary flow.
+- Magic-link sign-in remains available as a fallback.
 - Invite-only MVP.
 - Supabase users are created or invited manually.
 - Magic-link login uses `shouldCreateUser: false`.
 - Logging out does not clear IndexedDB by default.
-- Add a separate explicit action later to clear local data.
+- The Account screen has an explicit local cache clear action.
 
 ## Cloud Data Model
 
@@ -54,7 +58,7 @@ Delete conflict:
 - the app should not silently choose
 - ask whether to restore the edited version or keep the delete
 
-The sync-core test layer can already classify this conflict, but no conflict UI exists yet.
+Same-time edit conflicts can be resolved from the Account screen with `Keep cloud` or `Keep this device`. Delete/edit conflicts are still paused for safety and need a dedicated restore/delete choice.
 
 ## Media
 
@@ -68,7 +72,7 @@ Path shape:
 - `{user_id}/{tone_id}/{photo_id}.jpg`
 - `{user_id}/{tone_id}/audio.wav`
 
-Upload media automatically when online in a later pass. Download full media lazily when a tone is opened. The library view can use existing local cached media first, then add metadata or thumbnails later.
+Manual sync uploads local photo/audio payloads to Storage when needed, stores only Storage paths in cloud tone metadata, and downloads missing media payloads to the local IndexedDB cache. Continuous background media sync is not implemented.
 
 ## JSON Import and Export
 
@@ -78,30 +82,20 @@ When signed out:
 
 - import affects local IndexedDB only
 
-When signed in:
+When signed in, imported JSON remains local until the user syncs. The sync core classifies imported local tones as upload candidates, but there is not yet a dedicated import confirmation flow.
 
-- importing JSON should ask before uploading imported tones to cloud
-- user choices should include local-only import and upload/sync import
+## Remaining Follow-Up Work
 
-The sync core can classify imported local tones as upload candidates, but the UI confirmation is not wired yet.
+1. Add a dedicated delete/edit conflict prompt.
+2. Add a recycle bin view for restore/purge behavior.
+3. Add JSON import confirmation while signed in.
+4. Consider continuous background sync or a safer periodic sync if the product needs it.
+5. Add more user-facing sync progress for large photo/audio transfers.
 
-## Suggested Implementation Passes
+## Current Non-Goals
 
-1. Add real Supabase adapter methods behind the existing provider-agnostic sync core.
-2. Add a manually triggered sync button or developer-only sync command.
-3. Add automatic metadata sync using newest whole tone wins.
-4. Add media upload queue.
-5. Add lazy media download on tone open.
-6. Add recycle bin restore/purge behavior.
-7. Add delete-conflict prompt.
-8. Polish account/settings UI, including explicit local data clear.
-
-## Non-Goals For The Current Backend Foundation
-
-- no app UI changes
-- no real Supabase tone upload/download
-- no automatic sync
-- no media upload/download
-- no JSON import/export behavior changes
+- no continuous background sync loop
+- no multi-user shared tone libraries
+- no automatic cloud upload immediately after JSON import without user sync
 - no service-role keys
 - no schema split into pedals/knobs tables

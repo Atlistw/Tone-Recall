@@ -37,7 +37,7 @@ If the bucket creation section fails in SQL Editor because Storage bucket manage
 
 ## Frontend Config
 
-The auth shell reads [src/supabase-config.js](../src/supabase-config.js). [src/supabase-config.example.js](../src/supabase-config.example.js) is the template, and the active config currently contains empty placeholders:
+The auth shell reads [src/supabase-config.js](../src/supabase-config.js). [src/supabase-config.example.js](../src/supabase-config.example.js) is the template:
 
 ```js
 window.TONE_RECALL_SUPABASE_CONFIG = {
@@ -47,7 +47,7 @@ window.TONE_RECALL_SUPABASE_CONFIG = {
 };
 ```
 
-Fill in the project URL and anon/publishable key from **Project Settings -> API** when you are ready to test auth. The anon/publishable key is okay in browser code. Never paste a service-role key into this file.
+Fill in the project URL and anon/publishable key from **Project Settings -> API** when you are ready to test auth. The anon/publishable key is okay in browser code and may be committed for a public static app. Never paste a service-role key into this file.
 
 Leave `redirectTo` blank to use the current page URL, or set it explicitly to the GitHub Pages URL.
 
@@ -71,11 +71,12 @@ For now, users should be invited or created manually in Supabase:
 
 1. Go to **Authentication -> Users**.
 2. Add or invite the user email manually.
-3. The current app auth shell sends magic links with `shouldCreateUser: false`.
+3. Set or share a temporary password for that user.
+4. The app's primary flow is email/password sign-in. Magic-link sign-in is still available as a fallback and uses `shouldCreateUser: false`.
 
 That keeps random visitors from creating accounts through the public app.
 
-The default Supabase email sender is fine for the MVP. Custom SMTP and a custom auth email domain can wait until the app needs production polish.
+The default Supabase email sender is fine for occasional fallback magic links. Custom SMTP and a custom auth email domain can wait until the app needs production polish.
 
 ## Verify Database Objects
 
@@ -123,6 +124,20 @@ After the schema is installed and auth is configured, verify from the browser wi
 
 Do not use the service-role key for browser verification because it bypasses RLS.
 
-## Current Non-Goals
+## Current App Sync Behavior
 
-The app has an auth shell and a pure sync-core test layer, but it still does not perform real Supabase tone sync. Do not expect tones, photos, audio, JSON imports, or deletes to upload/download until the next sync implementation pass.
+The app performs a conservative one-shot sync when a signed-in user loads the library. Users can also run `Account -> Sync now` to push or pull changes immediately.
+
+Current sync handles:
+
+- tone metadata
+- soft deletes
+- photos in `tone-photos`
+- audio files and voice memos in `tone-audio`
+
+Current sync does not handle:
+
+- continuous background sync
+- automatic upload immediately after JSON import without user sync
+- multi-user shared tone libraries
+- dedicated delete/edit conflict resolution UI
