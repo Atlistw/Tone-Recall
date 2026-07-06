@@ -6,7 +6,10 @@
   "scripts": {
     "check:mobile": "node tools/mobile-check.js",
     "loop:qwen-mobile": "node tools/qwen-mobile-loop.js",
-    "test": "npm run check:mobile"
+    "test": "npm run check:mobile",
+    "test:sync": "node --test tests/sync-core.test.js tests/supabase-sync-adapter.test.js tests/manual-sync.test.js",
+    "test:supabase-sync": "node --test tests/supabase-sync-adapter.test.js",
+    "test:manual-sync": "node --test tests/manual-sync.test.js"
   },
   "keywords": [],
   "author": "",

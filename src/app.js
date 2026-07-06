@@ -1,5 +1,6 @@
-﻿const DB_NAME = "tone-recall-capture";
+const DB_NAME = "tone-recall-capture";
 const STORE = "tones";
+const SUPABASE_CDN_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
 
 const state = {
   tones: [],
@@ -20,7 +21,12 @@ const state = {
   panY: 0,
   panning: false,
   panStartX: 0,
-  panStartY: 0
+  panStartY: 0,
+  supabaseClient: null,
+  authSession: null,
+  authConfigured: false,
+  authLoading: false,
+  syncLoading: false
 };
 
 const els = {
@@ -29,6 +35,15 @@ const els = {
   toneGrid: document.getElementById("toneGrid"),
   libraryCount: document.getElementById("libraryCount"),
   searchInput: document.getElementById("searchInput"),
+  authPanel: document.getElementById("authPanel"),
+  authSignedOut: document.getElementById("authSignedOut"),
+  authSignedIn: document.getElementById("authSignedIn"),
+  authEmailInput: document.getElementById("authEmailInput"),
+  authSendButton: document.getElementById("authSendButton"),
+  authSyncButton: document.getElementById("authSyncButton"),
+  authLogoutButton: document.getElementById("authLogoutButton"),
+  authStatus: document.getElementById("authStatus"),
+  authUserEmail: document.getElementById("authUserEmail"),
   matchedTags: document.getElementById("matchedTags"),
   saveToneButton: document.getElementById("saveToneButton"),
   exportButton: document.getElementById("exportButton"),
@@ -202,10 +217,224 @@ function searchableText(tone) {
   return [tone.title, tone.description, tagsFor(tone.description).join(" ")].join(" ").toLowerCase();
 }
 
+function visibleTones() {
+  return state.tones.filter((tone) => !tone.deletedAt && !tone.deleted_at);
+}
+
 function filteredTones() {
   const term = els.searchInput.value.trim().toLowerCase();
-  if (!term) return state.tones;
-  return state.tones.filter((tone) => searchableText(tone).includes(term));
+  const tones = visibleTones();
+  if (!term) return tones;
+  return tones.filter((tone) => searchableText(tone).includes(term));
+}
+
+function supabaseConfig() {
+  const config = window.TONE_RECALL_SUPABASE_CONFIG || {};
+  return {
+    url: String(config.url || "").trim(),
+    anonKey: String(config.anonKey || "").trim(),
+    redirectTo: String(config.redirectTo || "").trim()
+  };
+}
+
+function hasSupabaseConfig(config) {
+  return Boolean(config.url && config.anonKey && !config.url.includes("YOUR_") && !config.anonKey.includes("YOUR_"));
+}
+
+function authRedirectUrl(config) {
+  if (config.redirectTo) return config.redirectTo;
+  if (location.protocol === "file:") return "";
+  return `${location.origin}${location.pathname}`;
+}
+
+function loadSupabaseScript() {
+  if (window.supabase?.createClient) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-tone-recall-supabase="true"]');
+    if (existing) {
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = SUPABASE_CDN_URL;
+    script.async = true;
+    script.dataset.toneRecallSupabase = "true";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.append(script);
+  });
+}
+
+function renderAuthShell(message = "") {
+  if (!els.authPanel) return;
+  const email = state.authSession?.user?.email || "";
+  els.authSignedOut.classList.toggle("hidden", Boolean(email));
+  els.authSignedIn.classList.toggle("hidden", !email);
+  els.authUserEmail.textContent = email;
+  els.authEmailInput.disabled = state.authLoading || !state.authConfigured;
+  els.authSendButton.disabled = state.authLoading || state.syncLoading || !state.authConfigured;
+  els.authSyncButton.disabled = state.authLoading || state.syncLoading || !email || !state.authConfigured;
+  els.authLogoutButton.disabled = state.authLoading || state.syncLoading;
+
+  if (message) {
+    els.authStatus.textContent = message;
+  } else if (!state.authConfigured) {
+    els.authStatus.textContent = "Supabase is not configured. Local library remains available.";
+  } else if (email) {
+    els.authStatus.textContent = "Signed in. Use Sync now to sync tone metadata.";
+  } else {
+    els.authStatus.textContent = "Enter an invited email to receive a sign-in link.";
+  }
+}
+
+async function initSupabaseAuth() {
+  const config = supabaseConfig();
+  state.authConfigured = hasSupabaseConfig(config);
+  renderAuthShell();
+  if (!state.authConfigured) return;
+
+  try {
+    await loadSupabaseScript();
+    state.supabaseClient = window.supabase.createClient(config.url, config.anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: "pkce"
+      }
+    });
+    const { data, error } = await state.supabaseClient.auth.getSession();
+    if (error) throw error;
+    state.authSession = data.session;
+    state.supabaseClient.auth.onAuthStateChange((_event, session) => {
+      state.authSession = session;
+      state.syncLoading = false;
+      renderAuthShell();
+    });
+    renderAuthShell();
+  } catch (error) {
+    state.authConfigured = false;
+    renderAuthShell("Supabase auth could not start. Local library remains available.");
+  }
+}
+
+async function sendMagicLink() {
+  const config = supabaseConfig();
+  const email = els.authEmailInput.value.trim();
+  if (!state.supabaseClient || !email) return;
+  const emailRedirectTo = authRedirectUrl(config);
+  if (!emailRedirectTo) {
+    renderAuthShell("Serve the app over localhost or HTTPS before sending a sign-in link.");
+    return;
+  }
+
+  state.authLoading = true;
+  renderAuthShell("Sending sign-in link...");
+  const { error } = await state.supabaseClient.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo,
+      shouldCreateUser: false
+    }
+  });
+  state.authLoading = false;
+
+  if (error) {
+    renderAuthShell(error.message || "Could not send sign-in link.");
+    return;
+  }
+  renderAuthShell("Sign-in link sent. Check that invited email inbox.");
+}
+
+async function logoutSupabase() {
+  if (!state.supabaseClient) return;
+  state.authLoading = true;
+  renderAuthShell("Signing out...");
+  const { error } = await state.supabaseClient.auth.signOut();
+  state.authLoading = false;
+  if (error) {
+    renderAuthShell(error.message || "Could not sign out.");
+    return;
+  }
+  state.authSession = null;
+  state.syncLoading = false;
+  renderAuthShell("Signed out. Local library remains on this device.");
+}
+
+function canRunManualMetadataSync() {
+  return Boolean(
+    state.supabaseClient &&
+    state.authSession?.user?.id &&
+    window.ToneRecallSyncCore?.planToneSync &&
+    window.ToneRecallSupabaseSyncAdapter?.createSupabaseSyncAdapter &&
+    window.ToneRecallManualSync?.runManualMetadataSync
+  );
+}
+
+function syncSummaryMessage(summary) {
+  if (summary.conflicts.length) {
+    return `Sync paused for ${summary.conflicts.length} delete/edit ${summary.conflicts.length === 1 ? "conflict" : "conflicts"}. No conflicting tone was changed.`;
+  }
+
+  const parts = [];
+  if (summary.uploaded) parts.push(`${summary.uploaded} uploaded`);
+  if (summary.applied) parts.push(`${summary.applied} downloaded`);
+  if (summary.deleted) parts.push(`${summary.deleted} deleted`);
+  if (summary.purged) parts.push(`${summary.purged} purged`);
+  if (summary.undoSnapshots) parts.push(`${summary.undoSnapshots} undo ${summary.undoSnapshots === 1 ? "snapshot" : "snapshots"}`);
+  return parts.length ? `Sync complete: ${parts.join(", ")}.` : "Sync complete. No metadata changes.";
+}
+
+async function syncNow() {
+  if (!state.authConfigured || !state.authSession) {
+    renderAuthShell("Sign in before syncing. Local library remains available.");
+    return;
+  }
+  if (!canRunManualMetadataSync()) {
+    renderAuthShell("Sync tools are not ready. Local library remains available.");
+    return;
+  }
+
+  state.syncLoading = true;
+  renderAuthShell("Syncing tone metadata...");
+
+  try {
+    await syncFromForm();
+    const userId = state.authSession.user.id;
+    const now = new Date().toISOString();
+    const adapter = window.ToneRecallSupabaseSyncAdapter.createSupabaseSyncAdapter(state.supabaseClient, { userId, now });
+    const summary = await window.ToneRecallManualSync.runManualMetadataSync({
+      localTones: await dbAll(),
+      adapter,
+      syncCore: window.ToneRecallSyncCore,
+      now,
+      applyLocalTone: async (tone) => {
+        normalizeTone(tone);
+        await dbPut(tone);
+      },
+      deleteLocalTone: dbDelete
+    });
+
+    state.tones = await dbAll();
+    if (state.activeId && !visibleTones().some((tone) => tone.id === state.activeId)) {
+      state.activeId = null;
+      state.activePedalId = null;
+      state.activePhotoId = null;
+      showLibrary();
+    } else if (!els.detailView.classList.contains("hidden")) {
+      renderDetail();
+    } else {
+      renderLibrary();
+    }
+
+    state.syncLoading = false;
+    renderAuthShell(syncSummaryMessage(summary));
+  } catch (error) {
+    state.syncLoading = false;
+    renderAuthShell(error?.message || "Sync failed. Local library remains available.");
+  }
 }
 
 async function exportLibrary() {
@@ -852,6 +1081,12 @@ function resetZoom() {
   applyZoom();
 }
 
+els.authSendButton.addEventListener("click", sendMagicLink);
+els.authEmailInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") sendMagicLink();
+});
+els.authSyncButton.addEventListener("click", syncNow);
+els.authLogoutButton.addEventListener("click", logoutSupabase);
 els.saveToneButton.addEventListener("click", startTone);
 els.exportButton.addEventListener("click", exportLibrary);
 els.importInput.addEventListener("change", () => {
@@ -910,8 +1145,15 @@ els.audioPlayer.addEventListener("canplay", () => {
 els.deleteToneButton.addEventListener("click", async () => {
   const tone = activeTone();
   if (!tone) return;
-  await dbDelete(tone.id);
-  state.tones = state.tones.filter((item) => item.id !== tone.id);
+  if (state.authConfigured && state.authSession?.user?.id) {
+    const now = new Date().toISOString();
+    tone.deletedAt = now;
+    tone.updatedAt = now;
+    await dbPut(tone);
+  } else {
+    await dbDelete(tone.id);
+    state.tones = state.tones.filter((item) => item.id !== tone.id);
+  }
   state.activeId = null;
   showLibrary();
 });
@@ -977,23 +1219,8 @@ window.addEventListener("beforeunload", syncFromForm);
 (async function init() {
   state.tones = await dbAll();
   renderLibrary();
+  initSupabaseAuth();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

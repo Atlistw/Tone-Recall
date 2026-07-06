@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -36,6 +36,22 @@
             </div>
           </div>
         </div>
+        <section id="authPanel" class="authPanel" aria-label="Account">
+          <div id="authSignedOut" class="authForm">
+            <label class="authEmailField">
+              <span>Account</span>
+              <input id="authEmailInput" type="email" autocomplete="email" placeholder="invited@email.com">
+            </label>
+            <button id="authSendButton" type="button">Send Link</button>
+          </div>
+          <div id="authSignedIn" class="authSession hidden">
+            <span id="authUserEmail"></span>
+            <button id="authSyncButton" type="button">Sync now</button>
+            <button id="authLogoutButton" type="button">Logout</button>
+          </div>
+          <p id="authStatus" class="helperText"></p>
+        </section>
+
         <div id="matchedTags" class="matchedTags"></div>
         <div id="toneGrid" class="toneGrid"></div>
       </section>
@@ -121,9 +137,10 @@
       </section>
     </main>
 
+    <script src="src/supabase-config.js"></script>
+    <script src="src/sync-core.js"></script>
+    <script src="src/supabase-sync-adapter.js"></script>
+    <script src="src/manual-sync.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>
-
-
-
