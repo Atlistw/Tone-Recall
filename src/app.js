@@ -32,6 +32,7 @@ const state = {
 const els = {
   authView: document.getElementById("authView"),
   libraryView: document.getElementById("libraryView"),
+  accountView: document.getElementById("accountView"),
   detailView: document.getElementById("detailView"),
   toneGrid: document.getElementById("toneGrid"),
   libraryCount: document.getElementById("libraryCount"),
@@ -52,6 +53,7 @@ const els = {
   authUserEmail: document.getElementById("authUserEmail"),
   matchedTags: document.getElementById("matchedTags"),
   saveToneButton: document.getElementById("saveToneButton"),
+  accountButton: document.getElementById("accountButton"),
   exportButton: document.getElementById("exportButton"),
   importInput: document.getElementById("importInput"),
   backButton: document.getElementById("backButton"),
@@ -354,15 +356,22 @@ function renderAuthShell(message = "") {
   els.authNewPasswordInput.disabled = state.authLoading || !signedIn || !state.authConfigured;
   els.authUpdatePasswordButton.disabled = state.authLoading || state.syncLoading || !signedIn || !state.authConfigured;
   els.authLogoutButton.disabled = state.authLoading || state.syncLoading;
+  els.accountButton.classList.toggle("hidden", showAuthGate || !signedIn);
+  els.accountButton.disabled = state.authLoading || state.syncLoading || !signedIn;
   els.saveToneButton.classList.toggle("hidden", showAuthGate);
   els.saveToneButton.disabled = showAuthGate;
 
   if (showAuthGate) {
     els.libraryView.classList.add("hidden");
+    els.accountView.classList.add("hidden");
     els.detailView.classList.add("hidden");
     els.backButton.classList.add("hidden");
     state.activeId = null;
-  } else if (els.libraryView.classList.contains("hidden") && els.detailView.classList.contains("hidden")) {
+  } else if (
+    els.libraryView.classList.contains("hidden") &&
+    els.accountView.classList.contains("hidden") &&
+    els.detailView.classList.contains("hidden")
+  ) {
     els.libraryView.classList.remove("hidden");
     els.backButton.classList.add("hidden");
     renderLibrary();
@@ -707,10 +716,25 @@ function showLibrary() {
   }
   syncFromForm();
   els.authView?.classList.add("hidden");
+  els.accountView.classList.add("hidden");
   els.detailView.classList.add("hidden");
   els.libraryView.classList.remove("hidden");
   els.backButton.classList.add("hidden");
   renderLibrary();
+}
+
+function showAccount() {
+  if (authGateActive()) {
+    renderAuthShell();
+    return;
+  }
+  syncFromForm();
+  els.authView?.classList.add("hidden");
+  els.libraryView.classList.add("hidden");
+  els.detailView.classList.add("hidden");
+  els.accountView.classList.remove("hidden");
+  els.backButton.classList.remove("hidden");
+  renderAuthShell();
 }
 
 function showDetail(id) {
@@ -723,6 +747,7 @@ function showDetail(id) {
   if (!tone) return;
   normalizeTone(tone);
   state.activePedalId = tone.pedals[0]?.id || null;
+  els.accountView.classList.add("hidden");
   els.libraryView.classList.add("hidden");
   els.detailView.classList.remove("hidden");
   els.backButton.classList.remove("hidden");
@@ -1297,6 +1322,7 @@ els.authNewPasswordInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") updatePassword();
 });
 els.authLogoutButton.addEventListener("click", logoutSupabase);
+els.accountButton.addEventListener("click", showAccount);
 els.saveToneButton.addEventListener("click", startTone);
 els.exportButton.addEventListener("click", exportLibrary);
 els.importInput.addEventListener("change", () => {

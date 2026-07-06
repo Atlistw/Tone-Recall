@@ -94,15 +94,22 @@ button:hover,
   letter-spacing: 0;
 }
 
+#accountButton,
 #saveToneButton {
   min-width: 180px;
 }
 
 .libraryView,
+.accountView,
 .detailView {
   padding: 22px;
   max-width: 1440px;
   margin: 0 auto;
+}
+
+.accountView {
+  display: grid;
+  justify-items: center;
 }
 
 .libraryHeader {
@@ -467,6 +474,7 @@ audio {
     font-size: 1rem;
   }
 
+  #accountButton,
   #saveToneButton {
     width: 100%;
   }
@@ -480,6 +488,7 @@ audio {
   }
 
   .libraryView,
+  .accountView,
   .detailView {
     padding: 14px;
   }
@@ -530,6 +539,7 @@ audio {
 }
 
 .accountPanel {
+  width: min(100%, 720px);
   margin-bottom: 18px;
 }
 
@@ -550,9 +560,13 @@ audio {
 
 .authSession {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) auto minmax(150px, 220px) auto auto;
+  grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
+}
+
+.authPasswordChange {
+  grid-column: 1 / -1;
 }
 
 .authActions {

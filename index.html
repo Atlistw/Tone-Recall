@@ -12,6 +12,7 @@
     <header class="topBar">
       <button id="backButton" class="iconButton hidden" type="button" aria-label="Back to library">Library</button>
       <h1>Tone Recall</h1>
+      <button id="accountButton" type="button" class="hidden">Account</button>
       <button id="saveToneButton" class="primaryButton hidden" type="button">New Tone Photo</button>
     </header>
 
@@ -60,19 +61,28 @@
             </div>
           </div>
         </div>
+        <div id="matchedTags" class="matchedTags"></div>
+        <div id="toneGrid" class="toneGrid"></div>
+      </section>
+
+      <section id="accountView" class="accountView hidden">
         <section id="accountPanel" class="authPanel accountPanel hidden" aria-label="Account">
+          <div class="authIntro">
+            <h2>Account</h2>
+            <p>Manage sync and password settings.</p>
+          </div>
           <div id="authSignedIn" class="authSession hidden">
             <span id="authUserEmail"></span>
             <button id="authSyncButton" type="button">Sync now</button>
-            <input id="authNewPasswordInput" class="authNewPasswordInput" type="password" autocomplete="new-password" placeholder="New password">
+            <label class="authEmailField authPasswordChange">
+              <span>New password</span>
+              <input id="authNewPasswordInput" class="authNewPasswordInput" type="password" autocomplete="new-password" placeholder="New password">
+            </label>
             <button id="authUpdatePasswordButton" type="button">Set password</button>
             <button id="authLogoutButton" type="button">Logout</button>
           </div>
           <p id="syncStatus" class="helperText"></p>
         </section>
-
-        <div id="matchedTags" class="matchedTags"></div>
-        <div id="toneGrid" class="toneGrid"></div>
       </section>
 
       <section id="detailView" class="detailView hidden">
